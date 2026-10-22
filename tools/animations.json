@@ -1,0 +1,7 @@
+{
+  "animations": [
+    { "id": "intro",  "name": "Probuzení",              "source": "../assets/intro",  "soul": false },
+    { "id": "soul_m", "name": "Muž – buší do skla",     "source": "../assets/soul_m" },
+    { "id": "soul_f", "name": "Žena – klidná duše",     "source": "../assets/soul_f" }
+  ]
+}
