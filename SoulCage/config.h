@@ -4,7 +4,7 @@
 #define FW_VERSION "1.0.0"
 
 // Default OTA manifest (GitHub Releases of this repository).
-#define DEFAULT_MANIFEST_URL "https://github.com/lodr981/soulcage/releases/latest/download/manifest.json"
+#define DEFAULT_MANIFEST_URL "https://github.com/lodr981/Duchesp32/releases/latest/download/manifest.json"
 
 // Waveshare ESP32-S3-LCD-1.28 (GC9A01 240x240). Display pins live in the TFT_eSPI setup.
 #define PIN_BACKLIGHT 40
