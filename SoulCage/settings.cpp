@@ -1,5 +1,6 @@
 #include "settings.h"
 #include <Preferences.h>
+#include "pet.h"
 
 Settings settings;
 
@@ -10,6 +11,15 @@ void settingsLoad() {
   if (!p.begin(NS, true)) {
     return;  // first boot, namespace does not exist yet - keep defaults
   }
+  settings.mode = p.getUChar("mode", settings.mode);
+  settings.scene = p.getUChar("scene", settings.scene);
+  settings.eyeColor = p.getUChar("eyes", settings.eyeColor);
+  settings.spooky = p.getUChar("spooky", settings.spooky);
+  settings.tiltInvert = p.getBool("tiltinv", settings.tiltInvert);
+  settings.motionSensitivity = p.getUChar("msens", settings.motionSensitivity);
+  settings.refX = p.getFloat("refx", 0);
+  settings.refY = p.getFloat("refy", 0);
+  settings.refZ = p.getFloat("refz", 0);
   settings.soul = p.getUChar("soul", settings.soul);
   settings.brightness = p.getUChar("bright", settings.brightness);
   settings.frameDelay = p.getUShort("delay", settings.frameDelay);
@@ -34,6 +44,15 @@ void settingsSave() {
     Serial.println("NVS: cannot open for writing");
     return;
   }
+  p.putUChar("mode", settings.mode);
+  p.putUChar("scene", settings.scene);
+  p.putUChar("eyes", settings.eyeColor);
+  p.putUChar("spooky", settings.spooky);
+  p.putBool("tiltinv", settings.tiltInvert);
+  p.putUChar("msens", settings.motionSensitivity);
+  p.putFloat("refx", settings.refX);
+  p.putFloat("refy", settings.refY);
+  p.putFloat("refz", settings.refZ);
   p.putUChar("soul", settings.soul);
   p.putUChar("bright", settings.brightness);
   p.putUShort("delay", settings.frameDelay);
@@ -66,6 +85,24 @@ void persistSetU8(const char *key, uint8_t value) {
   Preferences p;
   if (p.begin(NS, false)) {
     p.putUChar(key, value);
+    p.end();
+  }
+}
+
+bool petLoad(PetData &data) {
+  Preferences p;
+  if (!p.begin(NS, true)) {
+    return false;
+  }
+  bool ok = p.getBytesLength("pet") == sizeof(PetData) && p.getBytes("pet", &data, sizeof(PetData)) == sizeof(PetData);
+  p.end();
+  return ok;
+}
+
+void petSave(const PetData &data) {
+  Preferences p;
+  if (p.begin(NS, false)) {
+    p.putBytes("pet", &data, sizeof(PetData));
     p.end();
   }
 }

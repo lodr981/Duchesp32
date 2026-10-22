@@ -1,5 +1,6 @@
 #include "net.h"
 #include "animations.h"
+#include "app.h"
 #include "config.h"
 #include "display.h"
 #include "ota.h"
@@ -19,7 +20,6 @@ enum Pending : uint8_t { PENDING_NONE, PENDING_RECONNECT, PENDING_SLEEP, PENDING
 static NetMode mode = NET_OFF;
 static WebServer server(80);
 static DNSServer dns;
-static NetActions actions;
 static bool serverStarted, rescueMode, uploadAuthorized;
 static int networkIndex;
 static uint32_t connectStart, lastActivity;
@@ -150,6 +150,7 @@ static void handleStatus() {
   body += ",\"ota\":{\"state\":" + q(otaStateName(ota.state)) + ",\"progress\":" + String(ota.progress) +
           ",\"message\":" + q(ota.message) + ",\"latest\":" + q(ota.latestVersion) + ",\"notes\":" + q(ota.notes) +
           ",\"available\":" + String(ota.updateAvailable ? "true" : "false") + "}";
+  appStatusJson(body);
   body += "}";
   sendJson(200, body);
 }
@@ -174,7 +175,7 @@ static void handleSoul() {
     sendError(400, "invalid soul");
     return;
   }
-  actions.selectSoul(index);
+  appSelectSoul(index);
   sendJson(200, "{\"ok\":true,\"soul\":" + String(index) + "}");
 }
 
@@ -188,6 +189,12 @@ static void handleSettings() {
   settings.sleepMinutes = argLong("sleepMinutes", settings.sleepMinutes, 0, 1440);
   settings.wifiPolicy = argLong("wifiPolicy", settings.wifiPolicy, 0, 2);
   settings.wifiMinutes = argLong("wifiMinutes", settings.wifiMinutes, 1, 120);
+  settings.mode = argLong("displayMode", settings.mode, 0, 1);
+  settings.scene = argLong("scene", settings.scene, 0, 4);
+  settings.eyeColor = argLong("eyeColor", settings.eyeColor, 0, 3);
+  settings.spooky = argLong("spooky", settings.spooky, 0, 2);
+  settings.tiltInvert = argLong("tiltInvert", settings.tiltInvert, 0, 1);
+  settings.motionSensitivity = argLong("motionSensitivity", settings.motionSensitivity, 0, 2);
   if (server.hasArg("hostname")) {
     String host = sanitizeHostname(server.arg("hostname"));
     if (host.length()) {
@@ -199,7 +206,7 @@ static void handleSettings() {
     settings.manifestUrl = url.startsWith("https://") ? url : DEFAULT_MANIFEST_URL;
   }
   settingsSave();
-  actions.applySettings();
+  appApplySettings();
   sendOk();
 }
 
@@ -208,7 +215,7 @@ static void handleDisplay() {
     return;
   }
   bool on = server.hasArg("on") ? server.arg("on") == "1" : !settings.displayOn;
-  actions.setDisplay(on);
+  appSetDisplay(on);
   sendJson(200, String("{\"ok\":true,\"display\":") + (on ? "true" : "false") + "}");
 }
 
@@ -320,6 +327,42 @@ static void handleUploadChunk() {
   }
 }
 
+static void handleGhost() {
+  if (!authorized()) {
+    return;
+  }
+  if (!appGhostAction(server.arg("action"))) {
+    sendError(400, "Neznámá akce");
+    return;
+  }
+  sendOk();
+}
+
+static void handlePet() {
+  if (!authorized()) {
+    return;
+  }
+  String message;
+  String arg = server.hasArg("food") ? server.arg("food") : server.arg("name");
+  bool ok = appPetCommand(server.arg("cmd"), arg, message);
+  sendJson(ok ? 200 : 400, String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + q(message) + "}");
+}
+
+static void handleScene() {
+  if (!authorized()) {
+    return;
+  }
+  appSetScene(server.arg("id").toInt());
+  sendOk();
+}
+
+static void handleCalibrate() {
+  if (!authorized()) {
+    return;
+  }
+  appCalibrate() ? sendOk() : sendError(409, "Pohybový senzor nenalezen");
+}
+
 static void handleReboot() {
   if (authorized()) {
     sendOk();
@@ -373,6 +416,10 @@ static void setupRoutes() {
   server.on("/api/ota/check", HTTP_POST, handleOtaCheck);
   server.on("/api/ota/install", HTTP_POST, handleOtaInstall);
   server.on("/api/ota/upload", HTTP_POST, handleUploadDone, handleUploadChunk);
+  server.on("/api/ghost", HTTP_POST, handleGhost);
+  server.on("/api/pet", HTTP_POST, handlePet);
+  server.on("/api/scene", HTTP_POST, handleScene);
+  server.on("/api/imu/calibrate", HTTP_POST, handleCalibrate);
   server.on("/api/reboot", HTTP_POST, handleReboot);
   server.on("/api/sleep", HTTP_POST, handleSleep);
   server.onNotFound(handleNotFound);
@@ -426,8 +473,7 @@ static void startSta(int index) {
   Serial.printf("Wi-Fi: connecting to %s\n", settings.networks[index].ssid.c_str());
 }
 
-void netInit(const NetActions &a) {
-  actions = a;
+void netInit() {
   WiFi.persistent(false);  // credentials live in our own settings
 }
 
@@ -466,7 +512,7 @@ void netLoop() {
     pending = PENDING_NONE;
     switch (what) {
       case PENDING_RECONNECT: netStart(false); break;
-      case PENDING_SLEEP: actions.sleepNow(); break;
+      case PENDING_SLEEP: appSleepNow(); break;
       case PENDING_RESTART: restartClean(); break;
       default: break;
     }
@@ -478,6 +524,7 @@ void netLoop() {
     if (WiFi.status() == WL_CONNECTED) {
       mode = NET_STA;
       startServices();
+      configTime(0, 0, "pool.ntp.org", "time.google.com");  // pet ageing while switched off
       Serial.printf("Wi-Fi: connected, http://%s.local/ (%s)\n", settings.hostname.c_str(),
                     WiFi.localIP().toString().c_str());
     } else if (millis() - connectStart > WIFI_CONNECT_TIMEOUT_MS) {

@@ -1,8 +1,15 @@
-# SoulCage – digitální přívěsek s uvězněnou duší
+# SoulCage – digitální přívěsek s pandím duchem
 
 Firmware pro přívěsek [SoulCage](https://github.com/vishalsoniindia/SoulCage---The-Digital-Trapped-Soul-Pendant)
 od Vishala Soniho (MIT), rozšířený o:
 
+- **Panda-duch** – roztomile strašidelný duch kreslený živě (25 snímků/s), reaguje na pohyb přívěsku
+  a na povely z telefonu: mává, tancuje, dělá BAF!, schovává se, točí se, leká se, motá se mu hlava, spí.
+  5 scén (hřbitov, bambusový les, strašidelný dům, sklenice, zima), 4 barvy očí, 3 stupně strašidelnosti.
+  Původní „uvězněné duše“ zůstaly jako další scéna.
+- **Mazlíček (Tamagotchi)** – duch má sytost, zábavu a energii. Krmí se (bambus, sušenka, dýňový koláč,
+  bonbon), hraje si, hladí se, spí. Péčí roste přes 5 levelů (Dušínek → Malý strašák → Strašidlo →
+  Velký bubák → Král duchů) a dostává mašli, tesáčky, klobouk a korunu. Nikdy neumře – jen je smutný nebo ospalý.
 - **OTA aktualizace** – z GitHub Releases jedním tlačítkem v telefonu, nebo nahráním `.bin` souboru,
   s automatickým návratem k předchozí verzi, když nová nenaběhne.
 - **Ovládání z iPhonu** – webová aplikace v Safari (přidáš si ji na plochu), REST API pro **Zkratky / Siri**.
@@ -17,10 +24,17 @@ Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 
 
 | Gesto | Co udělá |
 |---|---|
-| zapnout | přehraje úvod a pak vybranou duši |
-| zapnout → vypnout → zapnout do 20 s | další duše (jako v originále) |
-| 3× rychle za sebou | **záchranný Wi-Fi hotspot** na 10 minut (duše zůstane) |
-| tlačítko BOOT (pokud je v krabičce přístupné) | krátce = další duše, 2 s = hotspot zap/vyp |
+| zatřást | duch se lekne |
+| dlouho a hodně zatřást | zamotá se mu hlava |
+| 2× poklepat | pohladit (srdíčka, +zábava) |
+| naklonit | duch odplave tím směrem a kouká tam |
+| otočit vzhůru nohama | duch visí hlavou dolů a chichotá se |
+| nechat ~2 min v klidu | usne a ztlumí displej, pohyb ho probudí |
+| zapnout → vypnout → zapnout do 20 s | další scéna (u uvězněných duší další duše) |
+| 3× rychle za sebou | **záchranný Wi-Fi hotspot** na 10 minut |
+| tlačítko BOOT (pokud je v krabičce přístupné) | krátce = pohladit / další duše, 2 s = hotspot zap/vyp |
+
+Pohybový senzor se při prvním klidném zavěšení sám zkalibruje; jde to i ručně v aplikaci (Duch → Pohybový senzor).
 
 ## Připojení iPhonu
 
@@ -41,14 +55,18 @@ aplikace v sekci „Zkratky pro iPhone“ (`Basic …`).
 
 | URL | Akce |
 |---|---|
-| `http://soulcage.local/api/soul?step=next` | další duše (`prev`, `random`) |
+| `http://soulcage.local/api/ghost?action=boo` | povel duchovi: `wave`, `dance`, `boo`, `hide`, `spin`, `laugh`, `love`, `scared`, `dizzy` |
+| `http://soulcage.local/api/pet?cmd=feed&food=bamboo` | nakrmit (`bamboo`, `cookie`, `pie`, `candy`) |
+| `http://soulcage.local/api/pet?cmd=play` | hrát si (dále `pet`, `sleep`, `wake`) |
+| `http://soulcage.local/api/scene?id=0` | scéna 0–4, `5` = uvězněné duše |
+| `http://soulcage.local/api/soul?step=next` | další uvězněná duše (`prev`, `random`) |
 | `http://soulcage.local/api/soul?id=0` | konkrétní duše |
 | `http://soulcage.local/api/display` | displej zap/vyp (`?on=1` / `?on=0`) |
-| `http://soulcage.local/api/settings?brightness=40` | jas 5–100 (dále `frameDelay`, `sleepMinutes`, `wifiPolicy`, `wifiMinutes`, `intro`) |
-| `http://soulcage.local/api/sleep` | uspat |
-| `GET http://soulcage.local/api/status` | stav v JSON (baterie, verze, Wi-Fi…) |
+| `http://soulcage.local/api/settings?brightness=40` | jas 5–100 (dále `eyeColor` 0–3, `spooky` 0–2, `frameDelay`, `sleepMinutes`, `wifiPolicy`, `wifiMinutes`, `intro`) |
+| `http://soulcage.local/api/sleep` | vypnout (hluboký spánek) |
+| `GET http://soulcage.local/api/status` | stav v JSON (mazlíček, baterie, verze, Wi-Fi…) |
 
-Zkratku pojmenuj např. „Probuď duši“ a spustíš ji hlasem přes Siri.
+Zkratku pojmenuj např. „Vyděs mě“ nebo „Nakrm pandu“ a spustíš ji hlasem přes Siri.
 
 ## Aktualizace (OTA)
 
@@ -102,13 +120,29 @@ python3 tools/convert_animations.py   # vygeneruje SoulCage/anim_data.h
 
 | Soubor | Obsah |
 |---|---|
-| `SoulCage/SoulCage.ino` | hlavní smyčka, gesta, časovač spánku |
+| `SoulCage/SoulCage.ino` | hlavní smyčka, režimy, gesta, mazlíček, časovač spánku |
+| `gfx.*` | malý vyhlazený 2D renderer do RGB565 (běží i na PC) |
+| `ghost.*` | panda-duch: kreslení, scény, akce a nálady |
+| `pet.*` | logika mazlíčka (potřeby, krmení, levely) |
+| `imu.*` | akcelerometr QMI8658, rozpoznání zatřesení, poklepání, náklonu a klidu |
 | `display.*` | displej, jas (PWM), překryvné ikony |
 | `animations.*`, `anim_data.h` | komprimované snímky a jejich dekomprese |
 | `net.*`, `web_ui.h` | Wi-Fi (síť / hotspot / captive portal), mDNS, webové API a aplikace |
 | `ota.*`, `certs.h` | OTA z GitHubu, nahrávání, rollback |
 | `power.*` | baterie (GPIO1, dělič 1:3), hluboký spánek, počítání rychlých zapnutí |
 | `settings.*` | nastavení v NVS |
+
+## Náhled ducha na počítači
+
+Kreslení ducha je nezávislé na hardwaru, takže jde vyzkoušet na PC:
+
+```sh
+cd tools/preview
+g++ -O2 -std=c++17 -I../../SoulCage preview.cpp ../../SoulCage/gfx.cpp ../../SoulCage/ghost.cpp ../../SoulCage/pet.cpp -o preview
+mkdir -p out && ./preview out 0 3 1 0 30   # scéna, level, strašidelnost, barva očí, sekundy
+```
+
+Vzniknou snímky `out/f0000.ppm…` (např. `ffmpeg -i out/f%04d.ppm duch.gif`).
 
 ## Licence
 

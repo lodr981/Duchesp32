@@ -26,6 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Ghost renderer builds and runs on the desktop
+        run: |
+          g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/preview.cpp \
+            SoulCage/gfx.cpp SoulCage/ghost.cpp SoulCage/pet.cpp -o preview
+          mkdir -p preview-frames && ./preview preview-frames 0 3 1 0 31
+
       - name: Version matches tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |

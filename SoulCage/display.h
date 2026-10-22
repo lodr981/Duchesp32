@@ -15,5 +15,9 @@ bool displayIsOn();
 // Decodes and shows one frame with optional status overlays.
 bool displayFrame(const Animation &anim, uint16_t frame, uint8_t overlays);
 
+// Native RGB565 frame buffer for procedural drawing (ghost mode) and its push.
+uint16_t *displayBuffer();
+void displayPushNative();
+
 // Full-screen text message, optional progress bar (0..100, <0 = none).
 void displayMessage(const char *title, const char *line = nullptr, int progress = -1);

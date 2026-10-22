@@ -95,6 +95,20 @@ bool displayFrame(const Animation &anim, uint16_t frame, uint8_t overlays) {
   return true;
 }
 
+uint16_t *displayBuffer() {
+  return (uint16_t *)frameBuf;
+}
+
+void displayPushNative() {
+  if (!frameBuf || !powered) {
+    return;
+  }
+  tft.setSwapBytes(true);
+  tft.pushImage(0, 0, SCREEN_W, SCREEN_H, (uint16_t *)frameBuf);
+  tft.setSwapBytes(false);
+  lastTitle = "";
+}
+
 void displayMessage(const char *title, const char *line, int progress) {
   if (!powered) {
     displaySetPower(true);

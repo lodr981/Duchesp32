@@ -1,7 +1,7 @@
 #pragma once
 
 // Firmware version. Release tags must match (v1.0.0 <-> "1.0.0"), CI checks it.
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
 
 // Default OTA manifest (GitHub Releases of this repository).
 #define DEFAULT_MANIFEST_URL "https://github.com/lodr981/Duchesp32/releases/latest/download/manifest.json"

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Generate SoulCage/web_icon.h (home-screen icon for the iPhone) from a soul frame."""
+"""Generate SoulCage/web_icon.h (home-screen icon for the iPhone) from assets/icon_panda.png.
+
+assets/icon_panda.png is a frame rendered by tools/preview (ghost renderer)."""
 import io
 import os
 from PIL import Image, ImageDraw
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-frame = Image.open(os.path.join(root, "assets", "soul_m", "frame_000.png")).convert("RGB")
+frame = Image.open(os.path.join(root, "assets", "icon_panda.png")).convert("RGB")
 size = 180
 icon = Image.new("RGB", (size, size), (11, 11, 16))
 face = frame.resize((size - 16, size - 16), Image.LANCZOS)
