@@ -62,6 +62,7 @@ Zkratku pojmenuj např. „Probuď duši“ a spustíš ji hlasem přes Siri.
 
 1. Zvyš `FW_VERSION` v `SoulCage/config.h` (např. `1.1.0`) a commitni.
 2. Vytvoř tag a pushni: `git tag v1.1.0 && git push origin v1.1.0`.
+   Nebo bez tagu: na GitHubu *Actions → Build firmware → Run workflow* a zaškrtni *Vytvořit Release*.
 3. GitHub Actions zkompiluje firmware a vytvoří Release se soubory `soulcage.bin`, `soulcage-full.bin`
    a `manifest.json`. Přívěsky si aktualizaci najdou samy.
 
