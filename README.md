@@ -71,7 +71,7 @@ Kvůli nové tabulce oddílů je potřeba nahrát firmware jednou kabelem, pak u
 
 **Nejjednodušší (bez instalace):** v Chrome/Edge na počítači otevři
 [ESP Tool](https://espressif.github.io/esptool-js/), *Connect*, vyber port přívěsku, přidej soubor
-`soulcage-full.bin` z Releases na adresu **0x0** a dej *Program*. (Když se nepřipojí: drž BOOT, stiskni RESET.)
+`soulcage-full.bin` z [Releases](https://github.com/lodr981/Duchesp32/releases/latest) na adresu **0x0** a dej *Program*. (Když se nepřipojí: drž BOOT, stiskni RESET.)
 
 **Arduino IDE:**
 1. Deska *esp32 by Espressif* verze 3.3.x, knihovna **TFT_eSPI 2.5.43**.
