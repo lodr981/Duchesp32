@@ -29,6 +29,10 @@ void settingsLoad() {
   settings.wifiPolicy = p.getUChar("wpol", settings.wifiPolicy);
   settings.wifiMinutes = p.getUChar("wmin", settings.wifiMinutes);
   settings.hostname = p.getString("host", settings.hostname);
+  settings.deviceName = p.getString("devname", settings.deviceName);
+  settings.greeting = p.getString("greet", settings.greeting);
+  settings.subtitle = p.getString("greet2", settings.subtitle);
+  settings.autoShow = p.getBool("auto", settings.autoShow);
   settings.password = p.getString("pass", settings.password);
   settings.manifestUrl = p.getString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {
@@ -62,6 +66,10 @@ void settingsSave() {
   p.putUChar("wpol", settings.wifiPolicy);
   p.putUChar("wmin", settings.wifiMinutes);
   p.putString("host", settings.hostname);
+  p.putString("devname", settings.deviceName);
+  p.putString("greet", settings.greeting);
+  p.putString("greet2", settings.subtitle);
+  p.putBool("auto", settings.autoShow);
   p.putString("pass", settings.password);
   p.putString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {

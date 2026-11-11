@@ -6,7 +6,7 @@
 #include "gfx.h"
 #include "ghost.h"
 
-enum SoulEvent : uint8_t { SOUL_SHAKE, SOUL_STRONG_SHAKE, SOUL_KNOCK, SOUL_WAKE };
+enum SoulEvent : uint8_t { SOUL_SHAKE, SOUL_STRONG_SHAKE, SOUL_KNOCK, SOUL_WAKE, SOUL_VANISH };
 
 class SoulDirector {
  public:

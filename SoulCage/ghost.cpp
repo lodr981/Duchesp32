@@ -132,6 +132,12 @@ void Ghost::trigger(GhostAction a, Food f) {
   food = f;
 }
 
+void Ghost::appear() {
+  asleep = false;
+  action = GA_HIDE;
+  actionTime = 1.5f;  // the hidden part of "hide": it reappears from the side
+}
+
 void Ghost::setSleeping(bool s) {
   if (s == asleep) {
     return;
@@ -174,17 +180,22 @@ void Ghost::update(float dt, const GhostInput &in, const GhostLook &look) {
     return;
   }
   // Weighted pick of a spontaneous action.
-  const GhostAction options[] = {GA_WAVE, GA_SPIN, GA_LAUGH, GA_HIDE, GA_BOO, GA_DANCE};
-  float weights[] = {3, 2, 2, 1.5f, look.spooky == 0 ? 0.0f : look.spooky == 1 ? 1.5f : 4.0f, 1};
+  const GhostAction options[] = {GA_WAVE, GA_SPIN, GA_LAUGH, GA_HIDE, GA_BOO, GA_DANCE, GA_LOVE, GA_PLAY};
+  const int count = sizeof(options) / sizeof(options[0]);
+  float weights[count] = {3, 2, 2, 1.5f, look.spooky == 0 ? 0.0f : look.spooky == 1 ? 1.5f : 4.0f, 1.2f, 1.5f, 1};
   if (needBored) {
     weights[0] = weights[2] = weights[5] = 0.3f;  // bored ghosts mope instead of dancing
   }
   float total = 0;
-  for (float w : weights) total += w;
+  for (int i = 0; i < count; i++) {
+    if (options[i] == lastIdle) weights[i] *= 0.1f;  // rarely the same thing twice
+    total += weights[i];
+  }
   float r = random01() * total;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < count; i++) {
     r -= weights[i];
     if (r <= 0) {
+      lastIdle = options[i];
       trigger(options[i]);
       return;
     }

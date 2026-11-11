@@ -1,7 +1,7 @@
 #pragma once
 
 // Firmware version. Release tags must match (v1.0.0 <-> "1.0.0"), CI checks it.
-#define FW_VERSION "1.2.0"
+#define FW_VERSION "1.3.0"
 
 // Default OTA manifest (GitHub Releases of this repository).
 #define DEFAULT_MANIFEST_URL "https://github.com/lodr981/Duchesp32/releases/latest/download/manifest.json"
@@ -27,10 +27,13 @@
 #define BAT_LOW_MV 3500
 #define BAT_CUTOFF_MV 3300
 
-#define WIFI_RESCUE_MINUTES 10
-#define WIFI_CONNECT_TIMEOUT_MS 10000
+#define WIFI_RESCUE_MINUTES 15
+#define WIFI_CONNECT_TIMEOUT_MS 15000
 #define MAX_NETWORKS 3
 
-#define DEFAULT_HOSTNAME "soulcage"
+#define DEFAULT_HOSTNAME "amelka"  // http://amelka.local
+#define DEFAULT_DEVICE_NAME "Amelčin duch"  // hotspot name
+#define DEFAULT_GREETING "Ahoj Amelko!"
+#define DEFAULT_SUBTITLE "Bububu!"
 #define DEFAULT_PASSWORD "soulcage"  // AP + web login, min. 8 chars (WPA2)
 #define WEB_USER "admin"

@@ -46,6 +46,8 @@ class Ghost {
  public:
   Ghost();
   void trigger(GhostAction action, Food food = FOOD_BAMBOO);
+  // Pops in from the side (used when switching scenes).
+  void appear();
   void setSleeping(bool sleeping);
   bool sleeping() const { return asleep; }
   void setNeeds(bool hungry, bool bored, bool tired) {
@@ -77,6 +79,7 @@ class Ghost {
   float lean = 0, flipBlend = 0;
   bool flatLook = false;
   uint32_t rng = 12345;
+  GhostAction lastIdle = GA_NONE;  // avoid repeating the same spontaneous action
 
   float random01();
   float actionDuration(GhostAction a) const;

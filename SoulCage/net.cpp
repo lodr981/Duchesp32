@@ -14,17 +14,19 @@
 #include <WiFi.h>
 #include <esp_mac.h>
 
-enum NetMode : uint8_t { NET_OFF, NET_CONNECTING, NET_STA, NET_AP };
+enum NetMode : uint8_t { NET_OFF, NET_AP };  // NET_AP: hotspot on (plus a saved network in the background)
 enum Pending : uint8_t { PENDING_NONE, PENDING_RECONNECT, PENDING_SLEEP, PENDING_RESTART };
 
 static NetMode mode = NET_OFF;
 static WebServer server(80);
 static DNSServer dns;
-static bool serverStarted, rescueMode, uploadAuthorized;
+static bool serverStarted, rescueMode, uploadAuthorized, staConnected;
 static int networkIndex;
 static uint32_t connectStart, lastActivity;
 static Pending pending;
 static uint32_t pendingAt;
+
+static String apSsid();
 
 static void schedule(Pending what) {
   pending = what;
@@ -122,7 +124,6 @@ static void handleStatus() {
   for (int i = 0; i < MAX_NETWORKS; i++) {
     networks += (i ? "," : "") + q(settings.networks[i].ssid);
   }
-  String ip = mode == NET_AP ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
   String body = "{";
   body += "\"fw\":" + q(FW_VERSION);
   body += ",\"soul\":" + String(settings.soul);
@@ -136,10 +137,17 @@ static void handleStatus() {
   body += ",\"wifiMinutes\":" + String(settings.wifiMinutes);
   body += ",\"wifiOffIn\":" + String(wifiSecondsLeft());
   body += ",\"rescue\":" + String(rescueMode ? "true" : "false");
-  body += ",\"mode\":" + q(mode == NET_AP ? "ap" : "sta");
-  body += ",\"ssid\":" + q(mode == NET_AP ? WiFi.softAPSSID() : WiFi.SSID());
-  body += ",\"ip\":" + q(ip);
-  body += ",\"rssi\":" + String(mode == NET_STA ? WiFi.RSSI() : 0);
+  body += ",\"apSsid\":" + q(apSsid());
+  body += ",\"apIp\":" + q(WiFi.softAPIP().toString());
+  body += ",\"clients\":" + String(mode == NET_OFF ? 0 : WiFi.softAPgetStationNum());
+  body += ",\"online\":" + String(staConnected ? "true" : "false");
+  body += ",\"ssid\":" + q(staConnected ? WiFi.SSID() : "");
+  body += ",\"ip\":" + q(staConnected ? WiFi.localIP().toString() : "");
+  body += ",\"rssi\":" + String(staConnected ? WiFi.RSSI() : 0);
+  body += ",\"deviceName\":" + q(settings.deviceName);
+  body += ",\"greeting\":" + q(settings.greeting);
+  body += ",\"subtitle\":" + q(settings.subtitle);
+  body += ",\"autoShow\":" + String(settings.autoShow ? "true" : "false");
   body += ",\"hostname\":" + q(settings.hostname);
   body += ",\"networks\":[" + networks + "]";
   body += ",\"battery\":{\"present\":" + String(bat.present ? "true" : "false") + ",\"mv\":" + String(bat.millivolts) +
@@ -205,6 +213,21 @@ static void handleSettings() {
       settings.hostname = host;
     }
   }
+  if (server.hasArg("deviceName")) {
+    String name = server.arg("deviceName");
+    name.trim();
+    if (name.length() && name != settings.deviceName) {
+      settings.deviceName = name;
+      schedule(PENDING_RECONNECT);  // new hotspot name
+    }
+  }
+  if (server.hasArg("greeting")) {
+    settings.greeting = server.arg("greeting").substring(0, 40);
+  }
+  if (server.hasArg("subtitle")) {
+    settings.subtitle = server.arg("subtitle").substring(0, 40);
+  }
+  settings.autoShow = argLong("autoShow", settings.autoShow, 0, 1);
   if (server.hasArg("manifestUrl")) {
     String url = server.arg("manifestUrl");
     settings.manifestUrl = url.startsWith("https://") ? url : DEFAULT_MANIFEST_URL;
@@ -257,17 +280,15 @@ static void handlePassword() {
   settings.password = pass;
   settingsSave();
   sendOk();
-  if (mode == NET_AP) {
-    schedule(PENDING_RECONNECT);  // hotspot uses the same password
-  }
+  schedule(PENDING_RECONNECT);  // the hotspot uses the same password
 }
 
 static void handleOtaCheck() {
   if (!authorized()) {
     return;
   }
-  if (mode != NET_STA) {
-    sendError(409, "Aktualizace z internetu vyžaduje připojení k Wi-Fi s internetem");
+  if (!staConnected) {
+    sendError(409, "Přívěsek není na internetu. V Nastavení → Wi-Fi přidej domácí Wi-Fi nebo hotspot iPhonu.");
     return;
   }
   otaStartCheck() ? sendOk() : sendError(409, "Probíhá jiná operace");
@@ -277,8 +298,8 @@ static void handleOtaInstall() {
   if (!authorized()) {
     return;
   }
-  if (mode != NET_STA) {
-    sendError(409, "Aktualizace z internetu vyžaduje připojení k Wi-Fi s internetem");
+  if (!staConnected) {
+    sendError(409, "Přívěsek není na internetu. V Nastavení → Wi-Fi přidej domácí Wi-Fi nebo hotspot iPhonu.");
     return;
   }
   otaStartInstall() ? sendOk() : sendError(409, "Probíhá jiná operace");
@@ -316,7 +337,7 @@ static void handleUploadChunk() {
         int percent = up.totalSize >= expected ? 100 : up.totalSize * 100 / expected;
         if (percent != lastPercent) {
           lastPercent = percent;
-          displayMessage("Aktualizace", "Nahravam firmware", percent);  // TFT fonts have no diacritics
+          displayMessage("Aktualizace", "Nahrávám firmware…", percent);
         }
       }
       break;
@@ -382,22 +403,13 @@ static void handleSleep() {
 }
 
 static void handleWebManifest() {
-  String body = "{\"name\":\"SoulCage\",\"short_name\":\"SoulCage\",\"start_url\":\"/\",\"display\":\"standalone\","
-                "\"background_color\":\"#0b0b10\",\"theme_color\":\"#0b0b10\","
+  String body = "{\"name\":\"Můj duch\",\"short_name\":\"Můj duch\",\"start_url\":\"/\",\"display\":\"standalone\","
+                "\"background_color\":\"#140b24\",\"theme_color\":\"#140b24\","
                 "\"icons\":[{\"src\":\"/icon.png\",\"sizes\":\"180x180\",\"type\":\"image/png\"}]}";
   server.send(200, "application/manifest+json", body);
 }
 
 static void handleNotFound() {
-  // Captive portal: any foreign host in hotspot mode lands on the UI.
-  if (mode == NET_AP) {
-    String host = server.hostHeader();
-    if (host != WiFi.softAPIP().toString() && host != settings.hostname + ".local") {
-      server.sendHeader("Location", "http://" + WiFi.softAPIP().toString() + "/");
-      server.send(302, "text/plain", "");
-      return;
-    }
-  }
   server.send(404, "text/plain", "Not found");
 }
 
@@ -444,7 +456,8 @@ static void startServices() {
 }
 
 static int nextNetwork(int from) {
-  for (int i = from; i < MAX_NETWORKS; i++) {
+  for (int k = 0; k < MAX_NETWORKS; k++) {
+    int i = (from + k) % MAX_NETWORKS;
     if (settings.networks[i].ssid.length()) {
       return i;
     }
@@ -452,45 +465,66 @@ static int nextNetwork(int from) {
   return -1;
 }
 
-static void startAp() {
-  uint8_t mac[6];
-  esp_efuse_mac_get_default(mac);
-  char ssid[24];
-  snprintf(ssid, sizeof(ssid), "SoulCage-%02X%02X", mac[4], mac[5]);
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid, settings.password.length() >= 8 ? settings.password.c_str() : nullptr);
-  dns.start(53, "*", WiFi.softAPIP());
-  mode = NET_AP;
-  startServices();
-  Serial.printf("Wi-Fi: hotspot %s, http://%s/\n", ssid, WiFi.softAPIP().toString().c_str());
+// Hotspot name = the pendant's name (UTF-8, at most 32 bytes, whole characters).
+static String apSsid() {
+  String name = settings.deviceName;
+  name.trim();
+  if (name.isEmpty()) {
+    uint8_t mac[6];
+    esp_efuse_mac_get_default(mac);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "Duch-%02X%02X", mac[4], mac[5]);
+    return buf;
+  }
+  if (name.length() > 32) {
+    int n = 32;
+    while (n > 0 && ((uint8_t)name[n] & 0xC0) == 0x80) n--;
+    name = name.substring(0, n);
+  }
+  return name;
 }
 
-static void startSta(int index) {
-  networkIndex = index;
+static bool staWanted() {
+  return !rescueMode && nextNetwork(0) >= 0;
+}
+
+static void tryNextNetwork() {
+  networkIndex = nextNetwork(networkIndex + 1);
+  if (networkIndex < 0) {
+    return;
+  }
   connectStart = millis();
-  mode = NET_CONNECTING;
-  WiFi.setHostname(settings.hostname.c_str());
-  WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(settings.networks[index].ssid.c_str(), settings.networks[index].pass.c_str());
-  Serial.printf("Wi-Fi: connecting to %s\n", settings.networks[index].ssid.c_str());
+  WiFi.begin(settings.networks[networkIndex].ssid.c_str(), settings.networks[networkIndex].pass.c_str());
+  Serial.printf("Wi-Fi: connecting to %s\n", settings.networks[networkIndex].ssid.c_str());
 }
 
 void netInit() {
   WiFi.persistent(false);  // credentials live in our own settings
 }
 
+// The hotspot always runs while Wi-Fi is on, so the phone can always connect
+// directly. Saved networks are joined in the background (internet for updates).
 void netStart(bool rescue) {
   rescueMode = rescue;
   lastActivity = millis();
   dns.stop();
-  int first = rescue ? -1 : nextNetwork(0);
-  if (first < 0) {
-    startAp();
-  } else {
-    startSta(first);
-  }
+  WiFi.disconnect(true);
+  WiFi.setHostname(settings.hostname.c_str());
+  WiFi.mode(staWanted() ? WIFI_AP_STA : WIFI_AP);
+  WiFi.setAutoReconnect(false);  // reconnects are paced by netLoop, scanning disturbs the hotspot
+  String ssid = apSsid();
+  WiFi.softAP(ssid.c_str(), settings.password.length() >= 8 ? settings.password.c_str() : nullptr);
+  WiFi.setTxPower(WIFI_POWER_13dBm);  // plenty for a phone nearby, kinder to a small battery
+  // Only our own name resolves; other lookups fail fast, so the phone does not
+  // show a captive-portal popup and keeps using mobile data for the internet.
+  dns.setErrorReplyCode(DNSReplyCode::NonExistentDomain);
+  dns.start(53, settings.hostname, WiFi.softAPIP());
+  mode = NET_AP;
+  staConnected = false;
+  networkIndex = -1;
+  connectStart = 0;
+  startServices();
+  Serial.printf("Wi-Fi: hotspot \"%s\", http://%s/\n", ssid.c_str(), WiFi.softAPIP().toString().c_str());
 }
 
 void netStop() {
@@ -502,12 +536,17 @@ void netStop() {
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   mode = NET_OFF;
+  staConnected = false;
   rescueMode = false;
   Serial.println("Wi-Fi: off");
 }
 
 bool netActive() {
   return mode != NET_OFF;
+}
+
+bool netOnline() {
+  return mode != NET_OFF && staConnected;
 }
 
 void netLoop() {
@@ -524,21 +563,27 @@ void netLoop() {
   if (mode == NET_OFF) {
     return;
   }
-  if (mode == NET_CONNECTING) {
-    if (WiFi.status() == WL_CONNECTED) {
-      mode = NET_STA;
-      startServices();
+  int clients = WiFi.softAPgetStationNum();
+  if (clients > 0) {
+    lastActivity = millis();  // a phone is connected to the hotspot: stay on
+  }
+  if (staWanted()) {
+    bool connected = WiFi.status() == WL_CONNECTED;
+    if (connected && !staConnected) {
+      staConnected = true;
       configTime(0, 0, "pool.ntp.org", "time.google.com");  // pet ageing while switched off
-      Serial.printf("Wi-Fi: connected, http://%s.local/ (%s)\n", settings.hostname.c_str(),
-                    WiFi.localIP().toString().c_str());
-    } else if (millis() - connectStart > WIFI_CONNECT_TIMEOUT_MS) {
-      int next = nextNetwork(networkIndex + 1);
-      next >= 0 ? startSta(next) : startAp();
+      Serial.printf("Wi-Fi: connected to %s (%s)\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+    } else if (!connected) {
+      staConnected = false;
+      // Searching for a network hops channels and drops phones from the hotspot,
+      // so only search while nobody is connected (or rarely).
+      uint32_t every = clients > 0 ? 180000 : WIFI_CONNECT_TIMEOUT_MS;
+      if (!connectStart || millis() - connectStart > every) {
+        tryNextNetwork();
+      }
     }
   }
-  if (mode == NET_AP) {
-    dns.processNextRequest();
-  }
+  dns.processNextRequest();
   if (serverStarted) {
     server.handleClient();
   }

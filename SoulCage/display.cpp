@@ -1,13 +1,13 @@
 #include "display.h"
 #include "config.h"
 #include <TFT_eSPI.h>
+#include "greeting.h"
 
 static TFT_eSPI tft;
 static uint8_t *frameBuf;
 static const size_t FRAME_BYTES = SCREEN_W * SCREEN_H * 2;
 static bool powered = true;
 static uint8_t brightness = 100;
-static String lastTitle, lastLine;  // what displayMessage() shows now
 
 // Frame buffer is big-endian RGB565 (wire order), so write colors byte by byte.
 static void bufFillRect(int x, int y, int w, int h, uint16_t color) {
@@ -91,7 +91,6 @@ bool displayFrame(const Animation &anim, uint16_t frame, uint8_t overlays) {
     drawWifiDot();
   }
   tft.pushImage(0, 0, SCREEN_W, SCREEN_H, (uint16_t *)frameBuf);
-  lastTitle = "";
   return true;
 }
 
@@ -106,30 +105,16 @@ void displayPushNative() {
   tft.setSwapBytes(true);
   tft.pushImage(0, 0, SCREEN_W, SCREEN_H, (uint16_t *)frameBuf);
   tft.setSwapBytes(false);
-  lastTitle = "";
 }
 
 void displayMessage(const char *title, const char *line, int progress) {
+  if (!frameBuf) {
+    return;
+  }
   if (!powered) {
     displaySetPower(true);
-    lastTitle = "";
   }
-  // Redraw text only when it changed, progress updates must not flicker.
-  if (lastTitle != title || lastLine != (line ? line : "")) {
-    lastTitle = title;
-    lastLine = line ? line : "";
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setTextDatum(MC_DATUM);
-    tft.drawString(title, SCREEN_W / 2, 95, 4);
-    if (line) {
-      tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-      tft.drawString(line, SCREEN_W / 2, 130, 2);
-    }
-  }
-  if (progress >= 0) {
-    const int w = 150, x = (SCREEN_W - w) / 2, y = 155;
-    tft.drawRect(x, y, w, 12, TFT_WHITE);
-    tft.fillRect(x + 2, y + 2, (w - 4) * constrain(progress, 0, 100) / 100, 8, TFT_CYAN);
-  }
+  Canvas c((uint16_t *)frameBuf, SCREEN_W, SCREEN_H);
+  drawMessage(c, title, line, progress);
+  displayPushNative();
 }

@@ -116,6 +116,10 @@ void SoulDirector::event(SoulEvent e) {
       if (mode == M_ESCAPE) break;
       play(M_KNOCK, script->knock, 2);
       break;
+    case SOUL_VANISH:  // quiet fade out, e.g. before a scene change
+      play(M_ESCAPE, script->idle, -1);
+      glitch = fmaxf(glitch, 0.3f);
+      break;
     case SOUL_WAKE:
       play(M_KNOCK, script->knock, 1);
       shake = fmaxf(shake, 0.3f);

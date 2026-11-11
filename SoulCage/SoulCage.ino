@@ -18,6 +18,7 @@
 #include "config.h"
 #include "display.h"
 #include "ghost.h"
+#include "greeting.h"
 #include "imu.h"
 #include "net.h"
 #include "ota.h"
@@ -53,6 +54,11 @@ static uint32_t lastPetSave, petDirtySince, lastWokenAt;
 static bool offlineApplied;
 
 static uint32_t lastInteraction;  // for the sleep timer
+
+// Surprise mode: items 0..SCENE_COUNT-1 are ghost scenes, then the trapped souls.
+static uint32_t showUntil, showSwitchAt;
+static int showPending = -1;
+static int8_t showRecent[3] = {-1, -1, -1};
 static uint8_t lowBatteryReadings;
 
 static bool timeValid() {
@@ -113,8 +119,17 @@ static void wakeSouls() {
   }
 }
 
+static void stopSurprise() {
+  showPending = -1;
+  if (settings.autoShow) {
+    settings.autoShow = false;
+    settingsSave();
+  }
+}
+
 void appSelectSoul(int index) {
   wakeSouls();
+  stopSurprise();
   settings.soul = index;
   settings.mode = MODE_SOULS;
   settingsSave();
@@ -130,6 +145,7 @@ bool appSoulAction(const String &action) {
   else if (action == "knock") e = SOUL_KNOCK;
   else if (action == "escape") e = SOUL_STRONG_SHAKE;
   else return false;
+  stopSurprise();
   if (settings.mode != MODE_SOULS) {
     settings.mode = MODE_SOULS;
     settingsSave();
@@ -260,6 +276,7 @@ bool appPetCommand(const String &cmd, const String &arg, String &message) {
 
 void appSetScene(int scene) {
   wakeSouls();
+  stopSurprise();
   if (scene >= SCENE_COUNT) {
     settings.mode = MODE_SOULS;
   } else {
@@ -333,7 +350,7 @@ static void handleButton() {
       displayMessage("Wi-Fi", "vypnuto");
     } else {
       netStart(true);
-      displayMessage("Wi-Fi hotspot", "http://192.168.4.1");
+      displayMessage(settings.deviceName.c_str(), "Wi-Fi zapnuto · 192.168.4.1");
     }
     nextFrameAt = millis() + 2000;
     pauseUntil = millis() + 2000;  // keep the message visible
@@ -402,7 +419,7 @@ static void checkBattery() {
   // Require several low readings in a row, Wi-Fi bursts dip the voltage.
   lowBatteryReadings = bat.present && bat.millivolts < BAT_CUTOFF_MV ? lowBatteryReadings + 1 : 0;
   if (lowBatteryReadings >= 3 && !otaBusy()) {
-    displayMessage("Slaba baterie", "Nabij me prosim");
+    displayMessage("Slabá baterie", "Nabij mě prosím");
     delay(3000);
     appSleepNow();
   }
@@ -415,9 +432,9 @@ static void showOtaProgress() {
   }
   lastDraw = millis();
   OtaStatus ota = otaStatus();
-  const char *line = ota.state == OTA_DOWNLOADING ? "Stahuji firmware"
-                     : ota.state == OTA_DONE      ? "Hotovo, restart"
-                                                  : "Pripravuji";
+  const char *line = ota.state == OTA_DOWNLOADING ? "Stahuji nový firmware…"
+                     : ota.state == OTA_DONE      ? "Hotovo, restartuji"
+                                                  : "Připravuji…";
   displayMessage("Aktualizace", line, ota.progress);
 }
 
@@ -550,6 +567,125 @@ static void soulsLoop() {
   }
 }
 
+// ------------------------------------------------------------------ surprise mode
+
+static int currentShowItem() {
+  return settings.mode == MODE_SOULS ? SCENE_COUNT + settings.soul : settings.scene;
+}
+
+static uint32_t showDuration(int item) {
+  uint32_t r = esp_random();
+  return item < SCENE_COUNT ? 70000 + r % 80000 : 35000 + r % 45000;
+}
+
+// Weighted random pick: no immediate repeats, souls less often in cute mode,
+// and the ghost gets more time when the pet needs care.
+static int pickShowItem() {
+  int n = SCENE_COUNT + soulCount();
+  float weights[16];
+  float total = 0;
+  int current = currentShowItem();
+  for (int i = 0; i < n && i < 16; i++) {
+    float w = i < SCENE_COUNT ? 1.0f : settings.spooky == 0 ? 0.3f : settings.spooky == 1 ? 0.7f : 1.2f;
+    if (i >= SCENE_COUNT && (pet.hungry() || pet.bored() || pet.tired())) w *= 0.3f;
+    for (int8_t r : showRecent) {
+      if (r == i) w *= 0.1f;
+    }
+    if (i == current) w = 0;
+    weights[i] = w;
+    total += w;
+  }
+  float pick = (esp_random() % 10000) / 10000.0f * total;
+  for (int i = 0; i < n && i < 16; i++) {
+    pick -= weights[i];
+    if (pick <= 0 && weights[i] > 0) return i;
+  }
+  return 0;
+}
+
+static void applyShowItem(int item) {
+  showRecent[2] = showRecent[1];
+  showRecent[1] = showRecent[0];
+  showRecent[0] = item;
+  if (item < SCENE_COUNT) {
+    bool fromSouls = settings.mode == MODE_SOULS;
+    settings.mode = MODE_GHOST;
+    settings.scene = item;
+    updateLook();
+    if (fromSouls) ghost.appear();  // after "hide" it is already reappearing
+  } else {
+    settings.mode = MODE_SOULS;
+    settings.soul = item - SCENE_COUNT;
+    playingIntro = false;
+    const Animation &anim = soulAt(settings.soul);
+    directorSoul = settings.soul;
+    soulDirector.setSoul(anim.id, anim.frameCount);
+    soulDirector.event(SOUL_KNOCK);  // "hello, I'm in here"
+  }
+  showUntil = millis() + showDuration(item);
+}
+
+static void surpriseTick() {
+  if (!settings.autoShow || otaBusy()) {
+    return;
+  }
+  uint32_t now = millis();
+  if (showPending >= 0) {
+    if ((int32_t)(now - showSwitchAt) >= 0) {
+      applyShowItem(showPending);
+      showPending = -1;
+    }
+    return;
+  }
+  if (!showUntil) {
+    showUntil = now + showDuration(currentShowItem());
+  }
+  if ((int32_t)(now - showUntil) < 0) {
+    return;
+  }
+  // Do not interrupt a nap, a running action or the intro.
+  bool busy = settings.mode == MODE_GHOST ? ghost.busy() || ghost.sleeping() : soulDirector.sleepy() || playingIntro;
+  if (busy) {
+    showUntil = now + 5000;
+    return;
+  }
+  showPending = pickShowItem();
+  if (settings.mode == MODE_GHOST) {
+    ghost.trigger(GA_HIDE);  // vanishes, the scene changes while it is invisible
+    showSwitchAt = now + 1000;
+  } else {
+    soulDirector.event(SOUL_VANISH);
+    showSwitchAt = now + 1100;
+  }
+}
+
+static void playGreeting() {
+  if (settings.greeting.isEmpty() || !settings.displayOn || !displayBuffer()) {
+    return;
+  }
+  GhostLook greetLook = look;
+  greetLook.spooky = 0;
+  GhostInput none;
+  ghost.trigger(GA_WAVE);
+  Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
+  uint32_t start = millis(), last = start;
+  bool loved = false;
+  for (;;) {
+    uint32_t now = millis();
+    float t = (now - start) / 1000.0f;
+    if (t > GREETING_SECONDS) break;
+    if (!loved && t > 2.0f) {
+      ghost.trigger(GA_LOVE);
+      loved = true;
+    }
+    ghost.update((now - last) / 1000.0f, none, greetLook);
+    last = now;
+    drawGreeting(canvas, ghost, greetLook, settings.greeting.c_str(), settings.subtitle.c_str(), t);
+    displayPushNative();
+    delay(5);
+  }
+}
+
 static void petHousekeeping() {
   float rx, ry, rz;
   if (imuReferenceChanged(rx, ry, rz)) {
@@ -615,15 +751,18 @@ void setup() {
 
   batteryUpdate();
   if (battery().present && battery().millivolts < BAT_CUTOFF_MV) {
-    displayMessage("Slaba baterie", "Nabij me prosim");
+    displayMessage("Slabá baterie", "Nabij mě prosím");
     delay(3000);
     appSleepNow();
   }
 
   if (rescue) {
-    displayMessage("Wi-Fi hotspot", "http://192.168.4.1");
+    displayMessage(settings.deviceName.c_str(), "Wi-Fi zapnuto · 192.168.4.1");
     delay(2500);
   }
+
+  updateLook();
+  playGreeting();
 
   imuOk = imuInit(settings.refX, settings.refY, settings.refZ, settings.tiltInvert, settings.motionSensitivity);
   updateLook();
@@ -639,9 +778,7 @@ void setup() {
   }
   lastInteraction = millis();
   lastPetSave = millis();
-  if (settings.mode == MODE_GHOST) {
-    ghost.trigger(GA_WAVE);  // say hello
-  }
+
 }
 
 void loop() {
@@ -652,6 +789,7 @@ void loop() {
   handleImuEvents();
   checkBattery();
   petHousekeeping();
+  surpriseTick();
 
   static bool wasBusy;
   if (otaBusy()) {

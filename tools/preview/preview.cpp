@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include "ghost.h"
+#include "greeting.h"
 
 static void writePpm(const std::string &path, const uint16_t *px) {
   FILE *f = fopen(path.c_str(), "wb");
@@ -36,6 +37,31 @@ int main(int argc, char **argv) {
   look.spooky = argc > 4 ? atoi(argv[4]) : 1;
   look.eyeColor = argc > 5 ? atoi(argv[5]) : EYES_GREEN;
   float seconds = argc > 6 ? atof(argv[6]) : 30;
+
+  if (argc > 7) {  // greeting mode: ./preview out 0 1 0 0 5 "Ahoj Amelko!"
+    Ghost g;
+    g.setSpontaneous(false);
+    std::vector<uint16_t> b(240 * 240);
+    Canvas cv(b.data(), 240, 240);
+    GhostLook gl = look;
+    gl.spooky = 0;
+    GhostInput gi;
+    g.trigger(GA_WAVE);
+    for (int i = 0; i < (int)(GREETING_SECONDS * 20); i++) {
+      float t = i / 20.0f;
+      if (i == 40) g.trigger(GA_LOVE);
+      g.update(0.05f, gi, gl);
+      drawGreeting(cv, g, gl, argv[7], "Bububu!", t);
+      char name[64];
+      snprintf(name, sizeof(name), "/g%04d.ppm", i);
+      writePpm(out + name, b.data());
+    }
+    drawMessage(cv, "Aktualizace", "Stahuji nový firmware…", 64);
+    writePpm(out + "/msg1.ppm", b.data());
+    drawMessage(cv, "Slabá baterie", "Nabij mě prosím 🔋", -1);
+    writePpm(out + "/msg2.ppm", b.data());
+    return 0;
+  }
 
   std::vector<Cue> cues = {
       {1.0f, GA_WAVE, FOOD_BAMBOO, 0},   {3.5f, GA_BOO, FOOD_BAMBOO, 0},     {6.5f, GA_SCARED, FOOD_BAMBOO, 0},

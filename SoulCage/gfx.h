@@ -9,6 +9,24 @@ struct Color {
 
 Color mixColor(Color a, Color b, float t);
 
+struct FontGlyph {
+  uint16_t code;
+  uint8_t w, h;
+  int8_t xoff, yoff;  // from the pen position on the baseline
+  uint8_t advance;
+  uint32_t offset;    // into the 4-bit alpha bitmap
+};
+
+struct FontData {
+  const FontGlyph *glyphs;
+  uint16_t count;
+  const uint8_t *bitmap;
+  uint8_t lineHeight, ascent;
+};
+
+enum FontId : uint8_t { FONT_SMALL, FONT_BIG };
+enum TextAlign : int8_t { ALIGN_LEFT = -1, ALIGN_CENTER = 0, ALIGN_RIGHT = 1 };
+
 class Canvas {
  public:
   Canvas(uint16_t *buffer, int width, int height);
@@ -39,6 +57,11 @@ class Canvas {
   void star(float cx, float cy, float size, Color c, uint8_t a = 255);  // 4-point sparkle
   // Horizontal anti-aliased span on pixel row y (used for the ghost tail).
   void span(int y, float xl, float xr, Color c, uint8_t a);
+
+  // UTF-8 text; y is the top of the line. Unknown characters are skipped.
+  void text(const char *utf8, float x, float y, FontId font, Color c, uint8_t a = 255, TextAlign align = ALIGN_CENTER);
+  static int textWidth(const char *utf8, FontId font);
+  static int lineHeight(FontId font);
 
   void blend(int x, int y, Color c, uint32_t a);
 

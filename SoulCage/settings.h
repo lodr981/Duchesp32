@@ -33,8 +33,12 @@ struct Settings {
   bool displayOn = true;
   uint16_t sleepMinutes = 0;   // 0 = never
   uint8_t wifiPolicy = WIFI_AFTER_BOOT;
-  uint8_t wifiMinutes = 5;
+  uint8_t wifiMinutes = 10;
   String hostname = DEFAULT_HOSTNAME;
+  String deviceName = DEFAULT_DEVICE_NAME;  // hotspot name
+  String greeting = DEFAULT_GREETING;
+  String subtitle = DEFAULT_SUBTITLE;
+  bool autoShow = true;  // surprise mode: rotates scenes and souls
   String password = DEFAULT_PASSWORD;
   String manifestUrl = DEFAULT_MANIFEST_URL;
   Network networks[MAX_NETWORKS];

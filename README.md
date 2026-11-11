@@ -1,4 +1,4 @@
-# SoulCage – digitální přívěsek s pandím duchem
+# Amelčin duch – přívěsek s pandím duchem (SoulCage)
 
 Firmware pro přívěsek [SoulCage](https://github.com/vishalsoniindia/SoulCage---The-Digital-Trapped-Soul-Pendant)
 od Vishala Soniho (MIT), rozšířený o:
@@ -24,6 +24,18 @@ od Vishala Soniho (MIT), rozšířený o:
 
 Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 16 MB flash), Li-Po baterie, vypínač.
 
+## Novinky 1.3
+
+- **Uvítání po zapnutí** – „Ahoj Amelko!“ s mávajícím duchem (text, podtitulek i jméno přívěsku jdou změnit v aplikaci).
+- **Překvapení** – přívěsek sám chytře střídá všechny scény ducha i uvězněné duše (bez opakování, duše méně často
+  v roztomilém režimu, když má mazlíček hlad, víc času dostane duch). Ruční výběr scény Překvapení vypne.
+- **Hotspot**: běží pořád, když je Wi-Fi zapnutá (domácí síť se připojuje na pozadí jen kvůli internetu),
+  nevypne se, dokud je k němu připojený telefon, nevyskakuje okno „přihlášení k síti“, nižší vysílací výkon.
+  Jmenuje se podle přívěsku (výchozí **Amelčin duch**), adresa **http://192.168.4.1** nebo **http://amelka.local**.
+- Nová aplikace pro puberťačku 💜: záložky Můj duch / Scény / Nastavení, vysvětlivky „?“ u každé části,
+  rodičovská nastavení označená 👨‍👩‍👧.
+- Hezčí texty na displeji s diakritikou (písmo Inter, SIL OFL).
+
 ## Ovládání bez telefonu (vypínačem)
 
 | Gesto | Co udělá |
@@ -43,11 +55,11 @@ Pohybový senzor se při prvním klidném zavěšení sám zkalibruje; jde to i 
 ## Připojení iPhonu
 
 1. Po zapnutí je Wi-Fi aktivní 5 minut (nastavitelné). Bez uložené sítě přívěsek vytvoří hotspot
-   **SoulCage-xxxx**, heslo **soulcage**.
+   **Amelčin duch** (jméno jde změnit), heslo **soulcage**.
 2. Na iPhonu se připoj k hotspotu a otevři **http://192.168.4.1** (často se otevře samo).
 3. Přihlas se heslem zařízení (výchozí `soulcage`) a hned ho **změň** v části Zabezpečení.
 4. V části Wi-Fi → Uložené sítě přidej domácí Wi-Fi a/nebo **osobní hotspot iPhonu**
-   (pak přívěsek ovládáš i venku). Od té doby je na **http://soulcage.local**.
+   (kvůli aktualizacím z internetu). Přívěsek je pak i na **http://amelka.local**.
 5. V Safari dej **Sdílet → Přidat na plochu** – vznikne ikona, která se chová jako aplikace.
 
 Dokud máš webovou aplikaci otevřenou, Wi-Fi se nevypne. Malá azurová tečka nahoře na displeji = Wi-Fi zapnutá.
@@ -59,17 +71,17 @@ aplikace v sekci „Zkratky pro iPhone“ (`Basic …`).
 
 | URL | Akce |
 |---|---|
-| `http://soulcage.local/api/ghost?action=boo` | povel duchovi: `wave`, `dance`, `boo`, `hide`, `spin`, `laugh`, `love`, `scared`, `dizzy` |
-| `http://soulcage.local/api/pet?cmd=feed&food=bamboo` | nakrmit (`bamboo`, `cookie`, `pie`, `candy`) |
-| `http://soulcage.local/api/pet?cmd=play` | hrát si (dále `pet`, `sleep`, `wake`) |
-| `http://soulcage.local/api/scene?id=0` | scéna 0–4, `5` = uvězněné duše |
-| `http://soulcage.local/api/soul?step=next` | další uvězněná duše (`prev`, `random`) |
-| `http://soulcage.local/api/soul?action=bang` | uvězněná duše: `bang` (buší), `knock` (klepe), `escape` (útěk) |
-| `http://soulcage.local/api/soul?id=0` | konkrétní duše |
-| `http://soulcage.local/api/display` | displej zap/vyp (`?on=1` / `?on=0`) |
-| `http://soulcage.local/api/settings?brightness=40` | jas 5–100 (dále `eyeColor` 0–3, `spooky` 0–2, `frameDelay`, `sleepMinutes`, `wifiPolicy`, `wifiMinutes`, `intro`) |
-| `http://soulcage.local/api/sleep` | vypnout (hluboký spánek) |
-| `GET http://soulcage.local/api/status` | stav v JSON (mazlíček, baterie, verze, Wi-Fi…) |
+| `http://amelka.local/api/ghost?action=boo` | povel duchovi: `wave`, `dance`, `boo`, `hide`, `spin`, `laugh`, `love`, `scared`, `dizzy` |
+| `http://amelka.local/api/pet?cmd=feed&food=bamboo` | nakrmit (`bamboo`, `cookie`, `pie`, `candy`) |
+| `http://amelka.local/api/pet?cmd=play` | hrát si (dále `pet`, `sleep`, `wake`) |
+| `http://amelka.local/api/scene?id=0` | scéna 0–4, `5` = uvězněné duše |
+| `http://amelka.local/api/soul?step=next` | další uvězněná duše (`prev`, `random`) |
+| `http://amelka.local/api/soul?action=bang` | uvězněná duše: `bang` (buší), `knock` (klepe), `escape` (útěk) |
+| `http://amelka.local/api/soul?id=0` | konkrétní duše |
+| `http://amelka.local/api/display` | displej zap/vyp (`?on=1` / `?on=0`) |
+| `http://amelka.local/api/settings?brightness=40` | jas 5–100 (dále `eyeColor` 0–3, `spooky` 0–2, `frameDelay`, `sleepMinutes`, `wifiPolicy`, `wifiMinutes`, `intro`) |
+| `http://amelka.local/api/sleep` | vypnout (hluboký spánek) |
+| `GET http://amelka.local/api/status` | stav v JSON (mazlíček, baterie, verze, Wi-Fi…) |
 
 Zkratku pojmenuj např. „Vyděs mě“ nebo „Nakrm pandu“ a spustíš ji hlasem přes Siri.
 
@@ -144,7 +156,8 @@ Kreslení ducha je nezávislé na hardwaru, takže jde vyzkoušet na PC:
 
 ```sh
 cd tools/preview
-g++ -O2 -std=c++17 -I../../SoulCage preview.cpp ../../SoulCage/gfx.cpp ../../SoulCage/ghost.cpp ../../SoulCage/pet.cpp -o preview
+g++ -O2 -std=c++17 -I../../SoulCage preview.cpp ../../SoulCage/gfx.cpp ../../SoulCage/gfx_text.cpp \
+  ../../SoulCage/greeting.cpp ../../SoulCage/ghost.cpp ../../SoulCage/pet.cpp -o preview
 mkdir -p out && ./preview out 0 3 1 0 30   # scéna, level, strašidelnost, barva očí, sekundy
 ```
 

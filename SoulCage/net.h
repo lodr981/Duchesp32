@@ -7,3 +7,4 @@ void netStart(bool rescue);
 void netStop();
 void netLoop();
 bool netActive();
+bool netOnline();  // connected to a saved network (internet)
