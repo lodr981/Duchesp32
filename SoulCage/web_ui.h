@@ -85,6 +85,9 @@ nav button.on{color:var(--text);background:rgba(255,122,200,.16)}
 #login{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;padding:24px;z-index:5}
 #login .card{width:100%;max-width:360px}
 .hidden{display:none!important}
+.souls-only .ghost-only{display:none!important}
+.souls-card{display:none}.souls-only .souls-card{display:block}
+textarea{font:inherit;color:var(--text);background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:12px;padding:10px;width:100%;min-height:54px;margin:4px 0 8px}
 details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
 .lean{height:8px;background:rgba(0,0,0,.3);border-radius:4px;position:relative;margin:8px 0}
 .lean div{position:absolute;top:-3px;width:14px;height:14px;border-radius:7px;background:var(--pink);left:calc(50% - 7px);transition:left .3s}
@@ -101,7 +104,59 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
 
 <!-- ============ GHOST / PET ============ -->
 <div class="tab" id="tab-pet">
+<section class="card souls-card">
+  <div class="head"><h2>👻 Uvězněná duše</h2></div>
+  <div class="grid2" id="soulsTop"></div>
+  <div class="grid3">
+    <button class="big" data-soul="bang"><span>✋</span>Buš</button>
+    <button class="big" data-soul="knock"><span>🤜</span>Klepej</button>
+    <button class="big" data-soul="escape"><span>💥</span>Útěk</button>
+  </div>
+  <div class="row"><label for="speed2">Rychlost <span class="muted" id="speedVal2"></span></label></div>
+  <input type="range" id="speed2" min="30" max="300" step="10" dir="rtl">
+  <details class="help"><summary>Co duše umí?</summary>
+    <div class="gest" style="margin-top:8px">
+      <span>👆</span><span><b>1× ťukni</b> na přívěsek – zaklepe zpátky</span>
+      <span>✌️</span><span><b>2× ťukni</b> – buší do skla a sklo praskne</span>
+      <span>🫨</span><span><b>Zatřes</b> – vyleká se a buší</span>
+      <span>💥</span><span><b>Hodně zatřes</b> – rozbije sklo a uteče</span>
+      <span>🙃</span><span><b>Vzhůru nohama</b> – visí hlavou dolů</span>
+      <span>😴</span><span><b>Nech ji v klidu</b> – vybledne a usne</span>
+    </div>
+    <p>Muž a žena se sami střídají a pořád dělají něco jiného – buší, klepou, houpají se, zhasne světlo…</p>
+  </details>
+</section>
+
 <section class="card">
+  <div class="head"><h2>🔓 Osvoboď duši</h2><span class="muted" id="huntFreed"></span></div>
+  <div id="huntRun" class="hidden">
+    <div class="dots" id="huntDots" style="font-size:26px;letter-spacing:3px;text-align:center"></div>
+    <p class="muted" style="text-align:center;margin:4px 0 10px" id="huntText"></p>
+    <div class="grid2">
+      <button id="huntPrint">🖨️ Vytisknout pečetě</button>
+      <button class="danger" id="huntStop">⏹ Ukončit hru</button>
+    </div>
+  </div>
+  <div id="huntNew">
+    <div class="row"><label for="huntCount">Počet pečetí</label>
+      <select id="huntCount" style="width:auto"><option>3</option><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option><option>10</option></select></div>
+    <button class="primary" id="huntStart" style="width:100%">▶ Připravit novou hru</button>
+  </div>
+  <details class="more"><summary>✏️ Nápovědy (pro toho, kdo pečetě schovává)</summary>
+    <div id="huntHints"></div>
+    <button id="huntSaveHints" style="width:100%">Uložit nápovědy</button>
+  </details>
+  <details class="help"><summary>Jak se hraje?</summary>
+    <ul>
+      <li>Rodič (nebo kamarádka) dá <b>Připravit novou hru</b> a <b>Vytisknout pečetě</b> – každá pečeť je papírek s QR kódem.</li>
+      <li>Pečetě rozstříhá a schová po bytě. Do Nápověd může napsat, kde je další (např. „Hledej, kde spí ponožky“).</li>
+      <li>Kdo pečeť najde, naskenuje ji foťákem iPhonu (připojeného k Wi-Fi přívěsku). Na mobilu se ukáže „Pečeť zlomena!“ a nápověda k další.</li>
+      <li>Na přívěsku se kolem okraje odemkne zámek, duše zabuší a sklo praskne. Po poslední pečeti duše <b>uteče na svobodu</b> 🎉</li>
+    </ul>
+  </details>
+</section>
+
+<section class="card ghost-only">
   <div class="pet-head">
     <div><p class="pet-name" id="petName">…</p><span class="mood" id="petMood"></span></div>
     <div class="lvl"><b id="petLevel"></b><br><span class="muted" id="petTitle"></span></div>
@@ -114,7 +169,7 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   </details>
 </section>
 
-<section class="card">
+<section class="card ghost-only">
   <div class="head"><h2>Jak se má</h2></div>
   <div class="stat"><span>🍙</span><div class="bar"><div id="foodBar"></div></div><span id="foodVal"></span></div>
   <div class="stat"><span>🎈</span><div class="bar"><div id="funBar"></div></div><span id="funVal"></span></div>
@@ -126,7 +181,7 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   </details>
 </section>
 
-<section class="card">
+<section class="card ghost-only">
   <div class="head"><h2>Nakrmit</h2></div>
   <div class="grid2">
     <button class="big" data-food="bamboo"><span>🎋</span>Bambus</button>
@@ -140,7 +195,7 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   </details>
 </section>
 
-<section class="card">
+<section class="card ghost-only">
   <div class="head"><h2>Péče</h2></div>
   <div class="grid3">
     <button class="big" data-pet="play"><span>🎃</span>Hrát si</button>
@@ -149,7 +204,7 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   </div>
 </section>
 
-<section class="card">
+<section class="card ghost-only">
   <div class="head"><h2>Povely</h2></div>
   <div class="grid3" id="actions">
     <button class="big" data-act="wave"><span>👋</span>Zamávej</button>
@@ -193,6 +248,14 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
 <!-- ============ SCENES ============ -->
 <div class="tab" id="tab-scenes">
 <section class="card">
+  <div class="row" style="margin:0"><label for="soulsOnly"><b>Jen uvězněná duše</b><br><span class="muted">panda a mazlíček jsou schovaní</span></label><input type="checkbox" id="soulsOnly"></div>
+  <details class="help"><summary>Co to dělá?</summary>
+    <p>Přívěsek ukazuje jen uvězněného muže a ženu za sklem – střídají se a dělají různé věci. Když to vypneš,
+    vrátí se panda-duch, mazlíček a všechny scény (hřbitov, bambusy…).</p>
+  </details>
+</section>
+
+<section class="card">
   <button class="surprise" id="surpriseBtn"><span>🎲</span><div><b>Překvapení</b><br><span class="muted" style="font-size:13px">Přívěsek sám střídá scény i uvězněné duše</span></div></button>
   <details class="help" style="margin-top:10px"><summary>Jak funguje Překvapení?</summary>
     <p>Každou chvilku (1–2 minuty) se duch schová a objeví se jinde – na hřbitově, v bambusech, ve strašidelném domě…
@@ -201,7 +264,7 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   </details>
 </section>
 
-<section class="card">
+<section class="card ghost-only">
   <div class="head"><h2>Scéna</h2></div>
   <div class="grid2" id="scenes"></div>
   <div id="soulsBox" class="hidden">
@@ -223,7 +286,6 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
     </details>
     <div class="row"><label for="speed">Rychlost <span class="muted" id="speedVal"></span></label></div>
     <input type="range" id="speed" min="30" max="300" step="10" dir="rtl">
-    <div class="row"><label for="intro">Úvodní animace duší</label><input type="checkbox" id="intro"></div>
   </div>
 </section>
 
@@ -461,7 +523,7 @@ function buttons(container, items, onClick) {
 function render(s) {
   state = s;
   $('hello').textContent = (s.greeting || 'Ahoj!') + ' 👋';
-  $('fw').textContent = s.pet.name + ' · verze ' + s.fw;
+  $('fw').textContent = (s.soulsOnly ? s.deviceName : s.pet.name) + ' · verze ' + s.fw;
   $('fwText').textContent = s.fw;
   $('pwBanner').classList.toggle('hidden', !s.defaultPassword);
   const b = s.battery;
@@ -486,6 +548,36 @@ function render(s) {
   const sb = $('sleepBtn');
   sb.dataset.pet = p.asleep ? 'wake' : 'sleep';
   sb.innerHTML = p.asleep ? '<span>☀️</span>Probudit' : '<span>💤</span>Uspat';
+
+  // Souls-only layout
+  document.body.classList.toggle('souls-only', s.soulsOnly);
+  $('soulsOnly').checked = s.soulsOnly;
+  document.querySelector('nav button[data-tab=pet]').innerHTML = s.soulsOnly ? '<span>👻</span>Duše' : '<span>🐼</span>Můj duch';
+  buttons('soulsTop', s.souls, i => api('/api/soul', { id: i }).then(refresh))
+    .forEach((btn, i) => btn.classList.toggle('active', !s.autoShow && s.displayMode === 1 && i === s.soul));
+
+  // Hunt
+  const h = s.hunt;
+  if (h) {
+    $('huntFreed').textContent = h.freed ? '🕊️ ' + h.freed + '×' : '';
+    $('huntRun').classList.toggle('hidden', !h.active);
+    $('huntNew').classList.toggle('hidden', h.active);
+    let dots = '';
+    for (let i = 0; i < h.count; i++) dots += (h.mask >> i) & 1 ? '🔓' : '🔒';
+    $('huntDots').textContent = dots;
+    $('huntText').textContent = h.found + ' z ' + h.count + ' pečetí zlomeno' + (h.hints[0] ? ' · první nápověda: ' + h.hints[0] : '');
+    const hh = $('huntHints'), n = Math.max(h.count || 6, 3);
+    if (hh.children.length !== n + 1 && document.activeElement.tagName !== 'TEXTAREA') {
+      let html = '';
+      for (let i = 0; i <= n; i++) {
+        html += '<label class="muted">' + (i === 0 ? 'Kde hledat 1. pečeť (ukáže se v aplikaci)' :
+          i === n ? 'Po poslední pečeti (třeba vzkaz)' : 'Po pečeti ' + i + ' → kde je pečeť ' + (i + 1)) +
+          '</label><textarea id="hint' + i + '" maxlength="120"></textarea>';
+      }
+      hh.innerHTML = html;
+      h.hints.forEach((t, i) => { if ($('hint' + i)) $('hint' + i).value = t; });
+    }
+  }
 
   // Maze
   const g = s.game;
@@ -537,7 +629,7 @@ function render(s) {
     formsFilled = true;
     $('brightness').value = s.brightness;
     $('speed').value = s.frameDelay;
-    $('intro').checked = s.intro;
+    $('speed2').value = s.frameDelay;
     $('sleepMinutes').value = s.sleepMinutes;
     $('wifiPolicy').value = s.wifiPolicy;
     $('wifiMinutes').value = s.wifiMinutes;
@@ -561,6 +653,7 @@ function render(s) {
   }
   $('brightnessVal').textContent = $('brightness').value + ' %';
   $('speedVal').textContent = Math.round(1000 / $('speed').value) + ' snímků/s';
+  $('speedVal2').textContent = Math.round(1000 / $('speed2').value) + ' snímků/s';
   $('wifiMinutesRow').classList.toggle('hidden', $('wifiPolicy').value !== '0');
 
   const o = s.ota;
@@ -591,6 +684,18 @@ document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => api('/api
 document.querySelectorAll('#spooky button').forEach(b => b.onclick = () => saveSettings({ spooky: b.dataset.v }).then(refresh));
 $('surpriseBtn').onclick = () => saveSettings({ autoShow: state && state.autoShow ? 0 : 1 }).then(() => { toast(state && state.autoShow ? 'Překvapení vypnuto' : 'Překvapení zapnuto 🎲'); refresh(); });
 
+$('soulsOnly').onchange = e => saveSettings({ soulsOnly: e.target.checked ? 1 : 0 }).then(refresh);
+$('speed2').oninput = () => $('speedVal2').textContent = Math.round(1000 / $('speed2').value) + ' snímků/s';
+$('speed2').onchange = () => saveSettings({ frameDelay: $('speed2').value });
+function huntCmd(params) { return api('/api/hunt', params).then(j => { toast(j.message); refresh(); }).catch(e => toast(e.message)); }
+$('huntStart').onclick = () => huntCmd({ cmd: 'new', count: $('huntCount').value });
+$('huntStop').onclick = () => { if (confirm('Ukončit hru? Pečetě přestanou platit.')) huntCmd({ cmd: 'stop' }); };
+$('huntPrint').onclick = () => window.open('/hunt/print', '_blank');
+$('huntSaveHints').onclick = () => {
+  const p = { cmd: 'hints' };
+  document.querySelectorAll('#huntHints textarea').forEach(t => p['h' + t.id.slice(4)] = t.value);
+  huntCmd(p);
+};
 $('gamePlay').onclick = () => gameCmd({ cmd: 'start' });
 $('gameStop').onclick = () => gameCmd({ cmd: 'stop' });
 $('gameCalibrate').onclick = () => gameCmd({ cmd: 'calibrate' });
@@ -605,7 +710,6 @@ $('brightness').oninput = () => $('brightnessVal').textContent = $('brightness')
 $('brightness').onchange = () => saveSettings({ brightness: $('brightness').value });
 $('speed').oninput = () => $('speedVal').textContent = Math.round(1000 / $('speed').value) + ' snímků/s';
 $('speed').onchange = () => saveSettings({ frameDelay: $('speed').value });
-$('intro').onchange = e => saveSettings({ intro: e.target.checked ? 1 : 0 });
 $('sleepMinutes').onchange = e => saveSettings({ sleepMinutes: e.target.value });
 $('wifiPolicy').onchange = e => { $('wifiMinutesRow').classList.toggle('hidden', e.target.value !== '0'); saveSettings({ wifiPolicy: e.target.value }); };
 $('wifiMinutes').onchange = e => saveSettings({ wifiMinutes: e.target.value });

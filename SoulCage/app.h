@@ -15,3 +15,7 @@ bool appCalibrate();
 // Maze game: cmd = start|stop|calibrate, arg = level for start. Returns a message for the UI.
 bool appGameCommand(const String &cmd, const String &arg, String &message);
 void appStatusJson(String &body);  // appends ghost/pet fields to the status JSON
+// Treasure hunt "Osvoboď duši": cmd = new (arg = seal count) | stop.
+bool appHuntCommand(const String &cmd, const String &arg, String &message);
+// A seal QR code was scanned: returns the result page for the phone.
+String appHuntScan(const String &code);

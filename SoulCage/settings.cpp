@@ -1,5 +1,6 @@
 #include "settings.h"
 #include <Preferences.h>
+#include "hunt.h"
 #include "pet.h"
 
 Settings settings;
@@ -23,7 +24,6 @@ void settingsLoad() {
   settings.soul = p.getUChar("soul", settings.soul);
   settings.brightness = p.getUChar("bright", settings.brightness);
   settings.frameDelay = p.getUShort("delay", settings.frameDelay);
-  settings.playIntro = p.getBool("intro", settings.playIntro);
   settings.displayOn = p.getBool("disp", settings.displayOn);
   settings.sleepMinutes = p.getUShort("sleep", settings.sleepMinutes);
   settings.wifiPolicy = p.getUChar("wpol", settings.wifiPolicy);
@@ -34,6 +34,7 @@ void settingsLoad() {
   settings.subtitle = p.getString("greet2", settings.subtitle);
   settings.autoShow = p.getBool("auto", settings.autoShow);
   settings.qrOnBoot = p.getBool("qr", settings.qrOnBoot);
+  settings.soulsOnly = p.getBool("soulsonly", settings.soulsOnly);
   settings.mazeUnlocked = p.getUChar("mzlvl", settings.mazeUnlocked);
   if (p.getBytesLength("mzstars") == sizeof(settings.mazeStars)) {
     p.getBytes("mzstars", settings.mazeStars, sizeof(settings.mazeStars));
@@ -70,7 +71,6 @@ void settingsSave() {
   p.putUChar("soul", settings.soul);
   p.putUChar("bright", settings.brightness);
   p.putUShort("delay", settings.frameDelay);
-  p.putBool("intro", settings.playIntro);
   p.putBool("disp", settings.displayOn);
   p.putUShort("sleep", settings.sleepMinutes);
   p.putUChar("wpol", settings.wifiPolicy);
@@ -81,6 +81,7 @@ void settingsSave() {
   p.putString("greet2", settings.subtitle);
   p.putBool("auto", settings.autoShow);
   p.putBool("qr", settings.qrOnBoot);
+  p.putBool("soulsonly", settings.soulsOnly);
   p.putUChar("mzlvl", settings.mazeUnlocked);
   p.putBytes("mzstars", settings.mazeStars, sizeof(settings.mazeStars));
   p.putUChar("mzax", settings.mazeAxisX);
@@ -129,6 +130,42 @@ void petSave(const PetData &data) {
   Preferences p;
   if (p.begin(NS, false)) {
     p.putBytes("pet", &data, sizeof(PetData));
+    p.end();
+  }
+}
+
+bool huntLoad(HuntData &data) {
+  Preferences p;
+  if (!p.begin(NS, true)) {
+    return false;
+  }
+  bool ok = p.getBytesLength("hunt") == sizeof(HuntData) && p.getBytes("hunt", &data, sizeof(HuntData)) == sizeof(HuntData);
+  p.end();
+  return ok && data.version == HUNT_DATA_VERSION;
+}
+
+void huntSave(const HuntData &data) {
+  Preferences p;
+  if (p.begin(NS, false)) {
+    p.putBytes("hunt", &data, sizeof(HuntData));
+    p.end();
+  }
+}
+
+String huntHint(int index) {
+  Preferences p;
+  if (!p.begin("hunt", true)) {
+    return "";
+  }
+  String s = p.getString(("h" + String(index)).c_str(), "");
+  p.end();
+  return s;
+}
+
+void huntSetHint(int index, const String &text) {
+  Preferences p;
+  if (p.begin("hunt", false)) {
+    p.putString(("h" + String(index)).c_str(), text.substring(0, 120));
     p.end();
   }
 }

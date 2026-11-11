@@ -26,10 +26,9 @@ struct Settings {
   bool tiltInvert = false;
   uint8_t motionSensitivity = 1;  // 0 low, 1 normal, 2 high
   float refX = 0, refY = 0, refZ = 0;  // gravity when hanging straight, 0 = not calibrated
-  uint8_t soul = 0;            // index into souls (not counting intro)
+  uint8_t soul = 0;            // index into souls
   uint8_t brightness = 100;    // 5..100 %
   uint16_t frameDelay = 100;   // ms per frame
-  bool playIntro = true;
   bool displayOn = true;
   uint16_t sleepMinutes = 0;   // 0 = never
   uint8_t wifiPolicy = WIFI_AFTER_BOOT;
@@ -40,6 +39,7 @@ struct Settings {
   String subtitle = DEFAULT_SUBTITLE;
   bool autoShow = true;
   bool qrOnBoot = true;
+  bool soulsOnly = true;  // only the trapped souls (panda ghost and pet hidden)
   // Tilt maze: progress and how the accelerometer maps to the screen
   uint8_t mazeUnlocked = 1;
   uint8_t mazeStars[15] = {0};
@@ -59,6 +59,13 @@ void settingsSave();
 struct PetData;
 bool petLoad(PetData &data);
 void petSave(const PetData &data);
+
+struct HuntData;
+bool huntLoad(HuntData &data);
+void huntSave(const HuntData &data);
+// Hint 0 = where to find seal 1, hint i = shown after seal i was found.
+String huntHint(int index);
+void huntSetHint(int index, const String &text);
 
 // Small persistent counters used outside of Settings.
 uint8_t persistGetU8(const char *key, uint8_t def = 0);

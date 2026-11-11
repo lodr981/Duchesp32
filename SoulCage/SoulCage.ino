@@ -19,6 +19,7 @@
 #include "display.h"
 #include "ghost.h"
 #include "greeting.h"
+#include "hunt.h"
 #include "imu.h"
 #include "maze.h"
 #include "net.h"
@@ -37,7 +38,6 @@ SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 // Original souls mode
 static uint16_t frameIndex;
 static uint32_t nextFrameAt;
-static bool playingIntro;
 static SoulDirector soulDirector;
 static int directorSoul = -1;
 static uint8_t *soulScratch;  // decoded frame (PSRAM), so the photo can be shifted and flipped
@@ -62,6 +62,8 @@ static QrStage qrStage = QR_NONE;
 static uint32_t qrSince, qrLastDraw;
 
 static MazeGame maze;
+static HuntData hunt;
+static HuntOverlay huntFx;
 static uint32_t lastMazeFrame;
 
 // Surprise mode: items 0..SCENE_COUNT-1 are ghost scenes, then the trapped souls.
@@ -142,7 +144,6 @@ void appSelectSoul(int index) {
   settings.soul = index;
   settings.mode = MODE_SOULS;
   settingsSave();
-  playingIntro = false;
   frameIndex = 0;
   nextFrameAt = 0;
   lastInteraction = millis();
@@ -160,10 +161,15 @@ bool appSoulAction(const String &action) {
     settingsSave();
   }
   wakeSouls();
-  playingIntro = false;
   soulDirector.event(e);
   lastInteraction = millis();
   return true;
+}
+
+static void enforceSoulsOnly() {
+  if ((settings.soulsOnly || hunt.active) && settings.mode != MODE_SOULS) {
+    settings.mode = MODE_SOULS;
+  }
 }
 
 void appApplySettings() {
@@ -172,6 +178,7 @@ void appApplySettings() {
     netStart(false);
   }
   imuConfigure(settings.tiltInvert, settings.motionSensitivity);
+  enforceSoulsOnly();
   updateLook();
   nextFrameAt = 0;
   lastInteraction = millis();
@@ -345,6 +352,125 @@ bool appGameCommand(const String &cmd, const String &arg, String &message) {
   return true;
 }
 
+// "Ahoj Amelko!" -> "Děkuju, Amelko!"
+static String thanksText() {
+  String g = settings.greeting;
+  g.trim();
+  if (g.startsWith("Ahoj ")) {
+    String name = g.substring(5);
+    name.replace("!", "");
+    name.trim();
+    if (name.length()) return "Děkuju, " + name + "!";
+  }
+  return "Děkuju!";
+}
+
+static void showSouls() {
+  if (settings.mode != MODE_SOULS) {
+    settings.mode = MODE_SOULS;
+    settingsSave();
+  }
+  wakeSouls();
+  maze.stop();
+  qrStage = QR_NONE;
+}
+
+bool appHuntCommand(const String &cmd, const String &arg, String &message) {
+  lastInteraction = millis();
+  if (cmd == "stop") {
+    hunt.active = 0;
+    huntSave(hunt);
+    message = "Hra ukončena";
+    return true;
+  }
+  if (cmd != "new") {
+    message = "Neznámý příkaz";
+    return false;
+  }
+  int count = arg.toInt();
+  if (count < 3) count = 3;
+  if (count > HUNT_MAX_SEALS) count = HUNT_MAX_SEALS;
+  hunt.version = HUNT_DATA_VERSION;
+  hunt.active = 1;
+  hunt.count = count;
+  hunt.found = 0;
+  const char *alphabet = "abcdefghjkmnpqrstuvwxyz23456789";  // no look-alike characters
+  for (int i = 0; i < HUNT_MAX_SEALS; i++) {
+    for (int k = 0; k < HUNT_CODE_LEN; k++) hunt.codes[i][k] = alphabet[esp_random() % strlen(alphabet)];
+    hunt.codes[i][HUNT_CODE_LEN] = 0;
+  }
+  huntSave(hunt);
+  showSouls();
+  message = String("Nová hra se ") + count + " pečetěmi. Vytiskni je a schovej!";
+  return true;
+}
+
+static String scanPage(const char *emoji, const String &title, const String &text, const String &hint, bool party) {
+  int found = huntFoundCount(hunt);
+  String dots;
+  for (int i = 0; i < hunt.count; i++) dots += ((hunt.found >> i) & 1) ? "🔓" : "🔒";
+  String html = F("<!doctype html><html lang=cs><head><meta charset=utf-8>"
+                  "<meta name=viewport content='width=device-width,initial-scale=1'><title>Osvoboď duši</title><style>"
+                  "body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;"
+                  "text-align:center;padding:24px;color:#f6f0ff;font:18px/1.45 ui-rounded,-apple-system,sans-serif;"
+                  "background:radial-gradient(120% 70% at 50% 0%,#4a2280,#140b24 65%)}"
+                  ".e{font-size:96px;animation:pop .9s cubic-bezier(.2,1.6,.4,1) both}"
+                  "@keyframes pop{0%{transform:scale(0) rotate(-30deg)}100%{transform:scale(1)}}"
+                  "h1{font-size:30px;margin:12px 0 4px}.dots{font-size:26px;letter-spacing:4px;margin:10px 0}"
+                  ".hint{margin-top:18px;padding:16px;border-radius:20px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);max-width:420px}"
+                  ".hint b{display:block;color:#ff7ac8;font-size:14px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}"
+                  "a{color:#b79bff;margin-top:26px;display:inline-block}"
+                  ".c{position:fixed;top:-20px;font-size:24px;animation:fall linear forwards}"
+                  "@keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}</style></head><body>");
+  html += "<div class=e>" + String(emoji) + "</div><h1>" + title + "</h1><div>" + text + "</div>";
+  if (hunt.count) html += "<div class=dots>" + dots + "</div><div>" + String(found) + " z " + String(hunt.count) + "</div>";
+  if (hint.length()) {
+    String safe = hint;
+    safe.replace("&", "&amp;");
+    safe.replace("<", "&lt;");
+    html += "<div class=hint><b>Nápověda</b>" + safe + "</div>";
+  }
+  html += F("<a href='/'>Otevřít aplikaci</a>");
+  if (party) {
+    html += F("<script>for(let i=0;i<60;i++){const s=document.createElement('div');s.className='c';"
+              "s.textContent=['✨','🎉','💜','⭐','👻'][i%5];s.style.left=Math.random()*100+'vw';"
+              "s.style.animationDuration=(2+Math.random()*3)+'s';s.style.animationDelay=Math.random()*2+'s';"
+              "document.body.appendChild(s)}</script>");
+  }
+  return html + F("</body></html>");
+}
+
+String appHuntScan(const String &code) {
+  lastInteraction = millis();
+  int seal = huntSealForCode(hunt, code.c_str());
+  if (seal < 0) {
+    return scanPage("🤔", "Tohle není pečeť", "Tenhle kód do současné hry nepatří.", "", false);
+  }
+  if (!hunt.active) {
+    return scanPage("✨", "Duše už je volná", "Tahle hra skončila. Rodiče můžou v aplikaci připravit novou.", "", false);
+  }
+  if ((hunt.found >> seal) & 1) {
+    return scanPage("😉", "Tuhle už máš", "Pečeť č. " + String(seal + 1) + " je zlomená už z dřívějška.", huntHint(seal + 1), false);
+  }
+  hunt.found |= 1 << seal;
+  showSouls();
+  if (huntFoundCount(hunt) >= hunt.count) {
+    hunt.active = 0;
+    hunt.freed++;
+    huntSave(hunt);
+    soulDirector.event(SOUL_FREE);
+    huntFx.freed();
+    PetResult r = pet.gameWin();
+    if (r == PET_LEVEL_UP) queuedAction = GA_LEVELUP;
+    markPetDirty();
+    return scanPage("🕊️", "Duše je volná!", "Zlomila jsi všechny pečetě. " + thanksText(), "", true);
+  }
+  huntSave(hunt);
+  soulDirector.event(SOUL_SEAL);
+  huntFx.sealBroken(seal);
+  return scanPage("🔓", "Pečeť zlomena!", "Podívej se na přívěsek – duše cítí svobodu!", huntHint(seal + 1), false);
+}
+
 bool appCalibrate() {
   if (!imuCalibrate(settings.refX, settings.refY, settings.refZ)) {
     return false;
@@ -385,6 +511,12 @@ void appStatusJson(String &body) {
   body += ",\"mood\":" + jsonText(moodName(pet.mood(ghost.sleeping())));
   body += ",\"asleep\":" + String(ghost.sleeping() ? "true" : "false");
   body += ",\"ageMinutes\":" + String(d.ageMinutes) + "}";
+  body += ",\"soulsOnly\":" + String(settings.soulsOnly ? "true" : "false");
+  body += ",\"hunt\":{\"active\":" + String(hunt.active ? "true" : "false") + ",\"count\":" + String(hunt.count) +
+          ",\"found\":" + String(huntFoundCount(hunt)) + ",\"mask\":" + String(hunt.found) +
+          ",\"freed\":" + String(hunt.freed) + ",\"hints\":[";
+  for (int i = 0; i <= HUNT_MAX_SEALS; i++) body += (i ? "," : "") + jsonText(huntHint(i).c_str());
+  body += "]}";
   body += ",\"game\":{\"active\":" + String(maze.active() ? "true" : "false") + ",\"level\":" + String(maze.level()) +
           ",\"unlocked\":" + String(settings.mazeUnlocked) + ",\"calibrated\":" +
           String(settings.mazeCalibrated ? "true" : "false") + ",\"stars\":[";
@@ -454,7 +586,8 @@ static void handleImuEvents() {
       switch (e) {
         case IMU_SHAKE: soulDirector.event(SOUL_SHAKE); break;
         case IMU_STRONG_SHAKE: soulDirector.event(SOUL_STRONG_SHAKE); break;
-        case IMU_DOUBLE_TAP: soulDirector.event(SOUL_KNOCK); break;
+        case IMU_TAP: soulDirector.event(SOUL_TAP); break;
+        case IMU_DOUBLE_TAP: soulDirector.event(SOUL_DOUBLE_TAP); break;
         case IMU_MOTION:
           if (wasSleepy) soulDirector.event(SOUL_WAKE);
           break;
@@ -478,6 +611,9 @@ static void handleImuEvents() {
         break;
       case IMU_DOUBLE_TAP:
         if (!wasAsleep) handlePetResult(pet.pet(), GA_LOVE);
+        break;
+      case IMU_TAP:
+        if (!wasAsleep && !ghost.busy()) ghost.trigger(GA_WAVE);
         break;
       default:
         break;
@@ -574,7 +710,7 @@ static void ghostLoop() {
   displayPushNative();
 }
 
-// The souls after the intro: clips, reactions to motion and effects on the glass.
+// The trapped souls: clips, reactions to motion and effects on the glass.
 static void soulsDirectorLoop() {
   uint32_t now = millis();
   uint32_t interval = soulDirector.sleepy() ? 80 : 40;
@@ -612,36 +748,15 @@ static void soulsDirectorLoop() {
   }
   Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
   soulDirector.render(src, canvas, look);
+  huntFx.update(dt);
+  String thanks = thanksText();
+  huntFx.render(canvas, hunt, thanks.c_str());
   drawStatusIcons(canvas);
   displayPushNative();
 }
 
 static void soulsLoop() {
-  if (!playingIntro) {
-    soulsDirectorLoop();
-    return;
-  }
-  uint32_t now = millis();
-  if (!settings.displayOn || (int32_t)(now - nextFrameAt) < 0) {
-    delay(2);
-    return;
-  }
-  const Animation &anim = introAnimation();
-  uint8_t overlays = OVERLAY_NONE;
-  if (battery().present && battery().millivolts < BAT_LOW_MV) {
-    overlays |= OVERLAY_BATTERY_LOW;
-  }
-  if (netActive()) {
-    overlays |= OVERLAY_WIFI;
-  }
-  if (!displayFrame(anim, frameIndex, overlays)) {
-    Serial.printf("Frame %u of %s failed\n", frameIndex, anim.id);
-  }
-  nextFrameAt = now + settings.frameDelay;
-  if (++frameIndex >= anim.frameCount) {
-    frameIndex = 0;
-    playingIntro = false;
-  }
+  soulsDirectorLoop();
 }
 
 // ------------------------------------------------------------------ surprise mode
@@ -664,6 +779,7 @@ static int pickShowItem() {
   int current = currentShowItem();
   for (int i = 0; i < n && i < 16; i++) {
     float w = i < SCENE_COUNT ? 1.0f : settings.spooky == 0 ? 0.3f : settings.spooky == 1 ? 0.7f : 1.2f;
+    if (settings.soulsOnly || hunt.active) w = i < SCENE_COUNT ? 0.0f : 1.0f;  // only the trapped souls
     if (i >= SCENE_COUNT && (pet.hungry() || pet.bored() || pet.tired())) w *= 0.3f;
     for (int8_t r : showRecent) {
       if (r == i) w *= 0.1f;
@@ -677,7 +793,7 @@ static int pickShowItem() {
     pick -= weights[i];
     if (pick <= 0 && weights[i] > 0) return i;
   }
-  return 0;
+  return settings.soulsOnly || hunt.active ? SCENE_COUNT : 0;
 }
 
 static void applyShowItem(int item) {
@@ -693,8 +809,7 @@ static void applyShowItem(int item) {
   } else {
     settings.mode = MODE_SOULS;
     settings.soul = item - SCENE_COUNT;
-    playingIntro = false;
-    const Animation &anim = soulAt(settings.soul);
+      const Animation &anim = soulAt(settings.soul);
     directorSoul = settings.soul;
     soulDirector.setSoul(anim.id, anim.frameCount);
     soulDirector.event(SOUL_KNOCK);  // "hello, I'm in here"
@@ -720,8 +835,8 @@ static void surpriseTick() {
   if ((int32_t)(now - showUntil) < 0) {
     return;
   }
-  // Do not interrupt a nap, a running action or the intro.
-  bool busy = settings.mode == MODE_GHOST ? ghost.busy() || ghost.sleeping() : soulDirector.sleepy() || playingIntro;
+  // Do not interrupt a nap or a running action.
+  bool busy = settings.mode == MODE_GHOST ? ghost.busy() || ghost.sleeping() : soulDirector.sleepy();
   if (busy) {
     showUntil = now + 5000;
     return;
@@ -844,8 +959,31 @@ static void playGreeting() {
   GhostLook greetLook = look;
   greetLook.spooky = 0;
   GhostInput none;
-  ghost.trigger(GA_WAVE);
   Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
+  if (settings.mode == MODE_SOULS) {
+    // The trapped soul comes to the glass while the greeting appears.
+    const Animation &anim = soulAt(settings.soul);
+    directorSoul = settings.soul;
+    soulDirector.setSoul(anim.id, anim.frameCount);
+    soulDirector.event(SOUL_KNOCK);
+    uint8_t *src = soulScratch ? soulScratch : (uint8_t *)displayBuffer();
+    uint32_t start = millis(), last = start;
+    for (;;) {
+      uint32_t now = millis();
+      float t = (now - start) / 1000.0f;
+      if (t > GREETING_SECONDS) break;
+      soulDirector.update((now - last) / 1000.0f, settings.frameDelay / 1000.0f, none, greetLook);
+      last = now;
+      if (decodeFrame(anim, soulDirector.frame(), src, SCREEN_W * SCREEN_H * 2)) {
+        soulDirector.render(src, canvas, greetLook);
+        drawGreetingText(canvas, settings.greeting.c_str(), settings.subtitle.c_str(), t);
+        displayPushNative();
+      }
+      delay(5);
+    }
+    return;
+  }
+  ghost.trigger(GA_WAVE);
   uint32_t start = millis(), last = start;
   bool loved = false;
   for (;;) {
@@ -939,6 +1077,12 @@ void setup() {
     delay(2500);
   }
 
+  soulScratch = (uint8_t *)heap_caps_malloc(SCREEN_W * SCREEN_H * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!huntLoad(hunt)) {
+    memset(&hunt, 0, sizeof(hunt));
+    hunt.version = HUNT_DATA_VERSION;
+  }
+  enforceSoulsOnly();
   updateLook();
   playGreeting();
 
@@ -949,8 +1093,6 @@ void setup() {
     netStart(rescue);
   }
 
-  playingIntro = settings.playIntro;
-  soulScratch = (uint8_t *)heap_caps_malloc(SCREEN_W * SCREEN_H * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!settings.displayOn) {
     displaySetPower(false);
   }

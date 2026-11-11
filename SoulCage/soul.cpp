@@ -116,6 +116,39 @@ void SoulDirector::event(SoulEvent e) {
       if (mode == M_ESCAPE) break;
       play(M_KNOCK, script->knock, 2);
       break;
+    case SOUL_TAP:
+      if (mode == M_ESCAPE) break;
+      play(M_KNOCK, script->knock, 1);
+      if (script->impactCount) {
+        const Impact &im = script->impacts[(int)(random01() * script->impactCount) % script->impactCount];
+        addSmudge(im.x, im.y);
+      }
+      shake = fmaxf(shake, 0.15f);
+      break;
+    case SOUL_DOUBLE_TAP:
+      if (mode == M_ESCAPE) break;
+      play(M_BANG, script->bang, 2);
+      if (script->impactCount && spooky > 0) {
+        const Impact &im = script->impacts[(int)(random01() * script->impactCount) % script->impactCount];
+        addCrackBurst(im.x, im.y, 3, 30);
+      }
+      tintPulse = 1;
+      break;
+    case SOUL_SEAL:
+      play(M_BANG, script->bang, 3);
+      addCrackBurst(50 + random01() * 140, 50 + random01() * 140, 5 + (int)(random01() * 3), 55 + random01() * 30);
+      shake = 0.8f;
+      flash = 0.6f;
+      glitch = fmaxf(glitch, 0.35f);
+      break;
+    case SOUL_FREE:
+      play(M_ESCAPE, script->idle, -1);
+      addCrackBurst(120, 115, 10, 125);
+      shake = 1;
+      flash = 1;
+      glitch = 1;
+      escapeHidden = 9;  // away long enough for the celebration
+      break;
     case SOUL_VANISH:  // quiet fade out, e.g. before a scene change
       play(M_ESCAPE, script->idle, -1);
       glitch = fmaxf(glitch, 0.3f);
@@ -220,6 +253,7 @@ void SoulDirector::advance() {
       case M_APPROACH: play(M_BANG, script->bang, 3); break;
       case M_RETURN:
       case M_BANG:
+      case M_CALM:
       case M_KNOCK: play(isSleepy ? M_SLEEP : M_IDLE, isSleepy ? script->calm : script->idle, -1); break;
       default: break;
     }
@@ -256,7 +290,8 @@ void SoulDirector::update(float dt, float baseDelay, const GhostInput &in, const
     } else {
       fade = 1;
     }
-    if (modeTime > 2.4f) {
+    if (modeTime > 0.6f + escapeHidden) {
+      escapeHidden = 1.8f;
       if (script->hasApproach) {
         play(M_APPROACH, script->approach, 1);
       } else {
@@ -270,17 +305,31 @@ void SoulDirector::update(float dt, float baseDelay, const GhostInput &in, const
   }
 
   if (mode == M_IDLE && !isSleepy && time > nextEvent) {
-    float r = random01();
-    if (r < 0.55f) {
-      event(SOUL_SHAKE);
-      shake = 0.2f;  // a spontaneous attempt is gentler than a real shake
-    } else if (r < 0.85f) {
-      event(SOUL_KNOCK);
-    } else {
-      flickerUntil = time + 0.5f;
+    // A varied repertoire, never the same thing twice in a row.
+    float weights[6] = {3.0f, 2.5f, 1.5f, 1.2f, spooky == 0 ? 0.0f : spooky == 1 ? 0.5f : 1.2f,
+                        script->hasApproach ? 0.0f : 1.5f};
+    if (lastSpontaneous >= 0) weights[lastSpontaneous] *= 0.1f;
+    float total = 0;
+    for (float w : weights) total += w;
+    float r = random01() * total;
+    int pick = 0;
+    for (; pick < 5 && (r -= weights[pick]) > 0; pick++) {
     }
-    nextEvent = time + (spooky == 2 ? 10 + random01() * 15 : spooky == 1 ? 18 + random01() * 27 : 30 + random01() * 40);
+    lastSpontaneous = pick;
+    switch (pick) {
+      case 0:  // bang (the woman rushes to the glass first)
+        event(SOUL_SHAKE);
+        shake = 0.2f;
+        break;
+      case 1: event(SOUL_KNOCK); break;
+      case 2: play(M_CALM, script->calm, 3); break;  // a quiet, swaying moment
+      case 3: flickerUntil = time + 0.6f; break;     // the light flickers
+      case 4: event(SOUL_STRONG_SHAKE); break;       // a rare escape
+      default: play(M_BANG, script->approach, 3); break;  // the man's second banging pose
+    }
+    nextEvent = time + (spooky == 2 ? 8 + random01() * 12 : spooky == 1 ? 14 + random01() * 20 : 25 + random01() * 30);
   }
+
 }
 
 void SoulDirector::pixelPass(const uint8_t *src, uint16_t *dst, bool inPlace, Color tint, float tintAmount) {

@@ -6,7 +6,17 @@
 #include "gfx.h"
 #include "ghost.h"
 
-enum SoulEvent : uint8_t { SOUL_SHAKE, SOUL_STRONG_SHAKE, SOUL_KNOCK, SOUL_WAKE, SOUL_VANISH };
+enum SoulEvent : uint8_t {
+  SOUL_SHAKE,
+  SOUL_STRONG_SHAKE,
+  SOUL_KNOCK,
+  SOUL_WAKE,
+  SOUL_VANISH,
+  SOUL_TAP,         // one tap on the glass: the soul knocks back
+  SOUL_DOUBLE_TAP,  // two taps: it bangs and the glass cracks a little
+  SOUL_SEAL,        // a seal of the hunt game broke
+  SOUL_FREE,        // all seals broken: the soul escapes for a while
+};
 
 class SoulDirector {
  public:
@@ -50,7 +60,7 @@ class SoulDirector {
     float x, y, born;
   };
 
-  enum Mode : uint8_t { M_IDLE, M_APPROACH, M_BANG, M_KNOCK, M_ESCAPE, M_RETURN, M_SLEEP };
+  enum Mode : uint8_t { M_IDLE, M_APPROACH, M_BANG, M_KNOCK, M_ESCAPE, M_RETURN, M_SLEEP, M_CALM };
 
   const Script *script;
   Script generic;  // for animations without a hand-made script
@@ -78,6 +88,8 @@ class SoulDirector {
   bool flip = false;
   uint8_t spooky = 1;
   int lastImpactFrame = -1;
+  int lastSpontaneous = -1;
+  float escapeHidden = 1.8f;  // seconds the soul stays away after an escape
 
   static const int MAX_CRACKS = 400;
   Crack cracks[MAX_CRACKS];

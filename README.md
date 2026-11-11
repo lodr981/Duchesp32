@@ -24,6 +24,20 @@ od Vishala Soniho (MIT), rozšířený o:
 
 Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 16 MB flash), Li-Po baterie, vypínač.
 
+## Novinky 1.5 – Osvoboď duši 🔓
+
+- **Jen uvězněná duše** (výchozí): panda a mazlíček jsou schovaní, přívěsek střídá muže a ženu za sklem a ti
+  dělají pořád něco jiného (buší, klepou, houpají se v mlze, zhasne světlo, občas utečou). Vypíná se v aplikaci
+  (Scény → Jen uvězněná duše).
+- Odstraněna úvodní znělka YouTube/ElectroDonut z původního projektu. Po zapnutí se „Ahoj Amelko!“ ukáže přímo
+  nad duší.
+- **Ťuknutí**: citlivější rozpoznání, 1× ťuknout = duše zaklepe zpátky, 2× = zabuší a sklo praskne.
+- **Hra „Osvoboď duši“** (telefon + QR kódy): v aplikaci se připraví hra se 3–10 pečetěmi a vytisknou se
+  (`/hunt/print`, Safari → Sdílet → Tisk/PDF). Pečetě se schovají po bytě. Naskenování foťákem iPhonu
+  (připojeného k Wi-Fi přívěsku) otevře stránku „Pečeť zlomena!“ s nápovědou k další pečeti (nápovědy píše rodič
+  v aplikaci). Na přívěsku se kolem okraje odemyká zámek, duše buší a sklo praská; po poslední pečeti duše uteče
+  na svobodu s ohňostrojem a poděkováním.
+
 ## Novinky 1.4 – Labyrint 🎮
 
 - Hra **Labyrint s kuličkou**: nakláněním přívěsku se kutálí kulička do svítícího portálu (fyzika, odrazy od stěn).

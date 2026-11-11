@@ -20,6 +20,10 @@ static void shadowText(Canvas &c, const char *s, float x, float y, FontId f, Col
 
 void drawGreeting(Canvas &c, Ghost &ghost, const GhostLook &look, const char *text, const char *subtitle, float t) {
   ghost.render(c, look);
+  drawGreetingText(c, text, subtitle, t);
+}
+
+void drawGreetingText(Canvas &c, const char *text, const char *subtitle, float t) {
   FontId font = Canvas::textWidth(text, FONT_BIG) <= 190 ? FONT_BIG : FONT_SMALL;
   float a = clamp01((t - 0.3f) / 0.4f) * clamp01((GREETING_SECONDS - t) / 0.5f);
   if (a <= 0) return;

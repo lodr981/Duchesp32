@@ -106,18 +106,19 @@ static void imuTask(void *) {
     if (mag < 0.25f * k) {
       if (!quietSince) quietSince = now;
     }
-    if (!tapStart && mag > 1.0f * k && prevMag <= 1.0f * k && quietSince && now - quietSince > 100) {
+    if (!tapStart && mag > 0.7f * k && prevMag <= 0.7f * k && quietSince && now - quietSince > 80) {
       tapStart = now;
       tapHigh = 0;
     }
     if (tapStart) {
       if (mag > 0.5f * k) tapHigh++;
       if (now - tapStart > 120) {
-        if (tapHigh <= 5) {
+        if (tapHigh <= 6) {
           if (lastTap && tapStart - lastTap > 100 && tapStart - lastTap < 600) {
             emit(IMU_DOUBLE_TAP);
             lastTap = 0;
           } else {
+            emit(IMU_TAP);
             lastTap = tapStart;
           }
         }

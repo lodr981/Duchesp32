@@ -7,7 +7,8 @@ enum ImuEvent : uint8_t {
   IMU_NONE,
   IMU_SHAKE,         // a few quick shakes
   IMU_STRONG_SHAKE,  // shaken for a longer time
-  IMU_DOUBLE_TAP,
+  IMU_TAP,         // a single tap (sent right away)
+  IMU_DOUBLE_TAP,  // second tap shortly after the first
   IMU_MOTION,        // moved after being still (wake up)
 };
 

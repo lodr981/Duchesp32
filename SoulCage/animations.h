@@ -7,10 +7,9 @@ struct Animation {
   const uint8_t *data;      // concatenated zlib streams
   const uint32_t *offsets;  // frameCount + 1 entries
   uint16_t frameCount;
-  bool soul;                // selectable as soul (intro is not)
+  bool soul;                // selectable as soul
 };
 
-const Animation &introAnimation();
 size_t soulCount();
 const Animation &soulAt(size_t index);
 

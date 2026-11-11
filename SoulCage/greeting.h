@@ -6,6 +6,8 @@
 
 // t = seconds since the greeting started. The ghost must be updated by the caller.
 void drawGreeting(Canvas &c, Ghost &ghost, const GhostLook &look, const char *text, const char *subtitle, float t);
+// Only the bouncing text and sparkles (over any picture already in the canvas).
+void drawGreetingText(Canvas &c, const char *text, const char *subtitle, float t);
 // Full-screen message with optional progress (0..100, <0 = none).
 void drawMessage(Canvas &c, const char *title, const char *line, int progress);
 

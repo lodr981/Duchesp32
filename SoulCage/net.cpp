@@ -8,6 +8,8 @@
 #include "settings.h"
 #include "web_icon.h"
 #include "web_ui.h"
+#include "hunt.h"
+#include "qrcodegen.h"
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
@@ -132,7 +134,6 @@ static void handleStatus() {
   body += ",\"souls\":[" + souls + "]";
   body += ",\"brightness\":" + String(settings.brightness);
   body += ",\"frameDelay\":" + String(settings.frameDelay);
-  body += ",\"intro\":" + String(settings.playIntro ? "true" : "false");
   body += ",\"display\":" + String(settings.displayOn ? "true" : "false");
   body += ",\"sleepMinutes\":" + String(settings.sleepMinutes);
   body += ",\"wifiPolicy\":" + String(settings.wifiPolicy);
@@ -200,7 +201,6 @@ static void handleSettings() {
   }
   settings.brightness = argLong("brightness", settings.brightness, 5, 100);
   settings.frameDelay = argLong("frameDelay", settings.frameDelay, 30, 300);
-  settings.playIntro = argLong("intro", settings.playIntro, 0, 1);
   settings.sleepMinutes = argLong("sleepMinutes", settings.sleepMinutes, 0, 1440);
   settings.wifiPolicy = argLong("wifiPolicy", settings.wifiPolicy, 0, 2);
   settings.wifiMinutes = argLong("wifiMinutes", settings.wifiMinutes, 1, 120);
@@ -232,6 +232,7 @@ static void handleSettings() {
   }
   settings.autoShow = argLong("autoShow", settings.autoShow, 0, 1);
   settings.qrOnBoot = argLong("qrOnBoot", settings.qrOnBoot, 0, 1);
+  settings.soulsOnly = argLong("soulsOnly", settings.soulsOnly, 0, 1);
   if (server.hasArg("manifestUrl")) {
     String url = server.arg("manifestUrl");
     settings.manifestUrl = url.startsWith("https://") ? url : DEFAULT_MANIFEST_URL;
@@ -394,6 +395,76 @@ static void handleGame() {
   sendJson(ok ? 200 : 400, String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + q(message) + "}");
 }
 
+static void handleHunt() {
+  if (!authorized()) {
+    return;
+  }
+  String cmd = server.arg("cmd");
+  if (cmd == "hints") {
+    for (int i = 0; i <= HUNT_MAX_SEALS; i++) {
+      String key = "h" + String(i);
+      if (server.hasArg(key)) huntSetHint(i, server.arg(key));
+    }
+    sendJson(200, "{\"ok\":true,\"message\":\"Nápovědy uloženy\"}");
+    return;
+  }
+  String message;
+  bool ok = appHuntCommand(cmd, server.arg("count"), message);
+  sendJson(ok ? 200 : 400, String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + q(message) + "}");
+}
+
+// Scanned seal (opened by the phone camera, so no login).
+static void handleScan() {
+  lastActivity = millis();
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html; charset=utf-8", appHuntScan(server.arg("c")));
+}
+
+static String qrSvg(const String &text) {
+  static uint8_t qr[qrcodegen_BUFFER_LEN_FOR_VERSION(8)], temp[qrcodegen_BUFFER_LEN_FOR_VERSION(8)];
+  if (!qrcodegen_encodeText(text.c_str(), temp, qr, qrcodegen_Ecc_MEDIUM, 1, 8, qrcodegen_Mask_AUTO, true)) {
+    return "";
+  }
+  int size = qrcodegen_getSize(qr);
+  String svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='-2 -2 " + String(size + 4) + " " + String(size + 4) +
+               "' shape-rendering='crispEdges'><rect x='-2' y='-2' width='" + String(size + 4) + "' height='" +
+               String(size + 4) + "' fill='#fff'/><path fill='#140b24' d='";
+  for (int y = 0; y < size; y++) {
+    for (int x = 0; x < size; x++) {
+      if (qrcodegen_getModule(qr, x, y)) svg += "M" + String(x) + " " + String(y) + "h1v1h-1z";
+    }
+  }
+  return svg + "'/></svg>";
+}
+
+// Printable seals: open in Safari, Share -> Print (or save as PDF).
+static void handlePrint() {
+  HuntData d;
+  if (!huntLoad(d) || !d.count) {
+    server.send(200, "text/html; charset=utf-8", "<p>Nejdřív v aplikaci založ novou hru.</p>");
+    return;
+  }
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "text/html; charset=utf-8", "");
+  server.sendContent(F("<!doctype html><html lang=cs><head><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+                       "<title>Pečetě – Osvoboď duši</title><style>"
+                       "body{font-family:-apple-system,sans-serif;margin:0;padding:12px;color:#140b24}"
+                       ".grid{display:grid;grid-template-columns:1fr 1fr;gap:10mm}"
+                       ".card{border:2px dashed #7a5aa8;border-radius:8mm;padding:6mm;text-align:center;break-inside:avoid}"
+                       ".card h2{margin:0 0 2mm;font-size:20pt}.card svg{width:55mm;height:55mm}"
+                       ".card p{margin:2mm 0 0;font-size:11pt;color:#555}.tip{font-size:12pt;margin:0 0 6mm}"
+                       "@media print{.tip{display:none}}</style></head><body>"
+                       "<p class=tip>Vytiskni (Sdílet → Tisk, nebo ulož jako PDF), rozstříhej a schovej po bytě. "
+                       "Kdo pečeť najde, naskenuje ji foťákem iPhonu připojeného k Wi-Fi přívěsku.</p><div class=grid>"));
+  for (int i = 0; i < d.count; i++) {
+    String url = "http://192.168.4.1/s?c=" + String(d.codes[i]);
+    server.sendContent("<div class=card><h2>🔒 Pečeť " + String(i + 1) + "</h2>" + qrSvg(url) +
+                       "<p>Naskenuj mě a osvoboď duši 👻</p></div>");
+  }
+  server.sendContent(F("</div></body></html>"));
+  server.sendContent("");
+}
+
 static void handleCalibrate() {
   if (!authorized()) {
     return;
@@ -451,6 +522,9 @@ static void setupRoutes() {
   server.on("/api/scene", HTTP_POST, handleScene);
   server.on("/api/imu/calibrate", HTTP_POST, handleCalibrate);
   server.on("/api/game", HTTP_POST, handleGame);
+  server.on("/api/hunt", HTTP_POST, handleHunt);
+  server.on("/s", HTTP_GET, handleScan);
+  server.on("/hunt/print", HTTP_GET, handlePrint);
   server.on("/api/reboot", HTTP_POST, handleReboot);
   server.on("/api/sleep", HTTP_POST, handleSleep);
   server.onNotFound(handleNotFound);

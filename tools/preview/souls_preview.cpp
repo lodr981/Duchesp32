@@ -2,7 +2,8 @@
 // and runs the SoulDirector through a scripted session.
 // Build: g++ -O2 -std=c++17 -Ishim -I../../SoulCage souls_preview.cpp ../../SoulCage/gfx.cpp
 //        ../../SoulCage/soul.cpp ../../SoulCage/ghost.cpp ../../SoulCage/pet.cpp -lz -o souls_preview
-// Run:   ./souls_preview out_dir [soul 0|1] [spooky] [eyeColor] [seconds]
+// Run:   ./souls_preview out_dir [soul 0|1] [spooky] [eyeColor] [seconds] [hunt]
+//        with "hunt": taps, six QR seals and the freed soul instead of the motion script
 #include <zlib.h>
 #include <cmath>
 #include <cstdio>
@@ -10,6 +11,7 @@
 #include <string>
 #include <vector>
 #include "anim_data.h"
+#include "hunt.h"
 #include "soul.h"
 
 static bool decode(const Animation &a, uint16_t frame, uint8_t *out) {
@@ -49,9 +51,40 @@ int main(int argc, char **argv) {
   std::vector<uint16_t> dst(240 * 240);
   Canvas canvas(dst.data(), 240, 240);
   GhostInput in;
+  bool hunt = argc > 6 && std::string(argv[6]) == "hunt";
+  HuntData hd = {};
+  hd.active = hunt;
+  hd.count = 6;
+  HuntOverlay overlay;
   const float fps = 25, dt = 1 / fps;
   for (int i = 0; i < (int)(seconds * fps); i++) {
     float t = i * dt;
+    if (hunt) {
+      if (i == (int)(2 * fps)) director.event(SOUL_TAP);
+      if (i == (int)(4 * fps)) director.event(SOUL_DOUBLE_TAP);
+      for (int k = 0; k < 6; k++) {
+        if (i == (int)((7 + k * 3.5f) * fps)) {
+          hd.found |= 1 << k;
+          if (k < 5) {
+            director.event(SOUL_SEAL);
+            overlay.sealBroken(k);
+          } else {
+            hd.active = 0;
+            director.event(SOUL_FREE);
+            overlay.freed();
+          }
+        }
+      }
+      director.update(dt, 0.1f, in, look);
+      overlay.update(dt);
+      decode(*anim, director.frame(), src.data());
+      director.render(src.data(), canvas, look);
+      overlay.render(canvas, hd, "Děkuju, Amelko!");
+      char name[64];
+      snprintf(name, sizeof(name), "/f%04d.ppm", i);
+      writePpm(out + name, dst.data());
+      continue;
+    }
     // scripted session
     if (i == (int)(3 * fps)) director.event(SOUL_SHAKE);
     if (i == (int)(8 * fps)) director.event(SOUL_KNOCK);

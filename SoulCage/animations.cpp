@@ -7,15 +7,6 @@ static const size_t kAnimationTotal = sizeof(kAnimations) / sizeof(kAnimations[0
 // The decompressor state is ~11 KB, keep it off the task stack.
 static tinfl_decompressor *inflater;
 
-const Animation &introAnimation() {
-  for (size_t i = 0; i < kAnimationTotal; i++) {
-    if (!kAnimations[i].soul) {
-      return kAnimations[i];
-    }
-  }
-  return kAnimations[0];
-}
-
 size_t soulCount() {
   size_t n = 0;
   for (size_t i = 0; i < kAnimationTotal; i++) {
