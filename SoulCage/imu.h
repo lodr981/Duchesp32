@@ -18,7 +18,8 @@ struct ImuState {
   bool upsideDown;
   bool lyingFlat;    // display facing up or down
   uint32_t stillMs;  // how long the pendant has not moved
-  float gx, gy, gz;  // filtered gravity (g)
+  float gx, gy, gz;  // filtered gravity (g), slow and steady
+  float fx, fy, fz;  // lightly filtered acceleration (g), fast response for games
 };
 
 bool imuInit(float refX, float refY, float refZ, bool invert, uint8_t sensitivity);

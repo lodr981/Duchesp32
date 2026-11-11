@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static const float FIELD = 166;  // maze square inside the round display
 static const Color WALL = {200, 176, 255};
@@ -114,6 +115,7 @@ void MazeGame::generate(int level) {
     holeCount++;
   }
   lightRadius = currentLevel >= 11 ? 60 - (currentLevel - 11) * 4.5f : 0;
+  cacheValid = false;
   radius = fmaxf(3.5f, cell * 0.27f);
 }
 
@@ -285,9 +287,11 @@ MazeEvent MazeGame::update(float dt, float gx, float gy, float gz, Ghost &ghost,
       float ty = map.signY * (g[map.axisY] - neutral[map.axisY]);
       tx = fabsf(tx) < 0.03f ? 0 : clampf(tx, -0.8f, 0.8f);
       ty = fabsf(ty) < 0.03f ? 0 : clampf(ty, -0.8f, 0.8f);
-      const int steps = 6;
-      float h = dt / steps;
-      for (int s = 0; s < steps; s++) {
+      // Fixed 240 Hz physics steps: smooth and independent of the frame rate.
+      const float h = 1.0f / 240;
+      physicsTime += dt;
+      if (physicsTime > 0.1f) physicsTime = 0.1f;
+      for (; physicsTime >= h; physicsTime -= h) {
         vx += tx * 720 * h;
         vy += ty * 720 * h;
         vx *= 1 - 1.6f * h;
@@ -399,15 +403,9 @@ void MazeGame::drawParticles(Canvas &c) {
   }
 }
 
-void MazeGame::drawMaze(Canvas &c) {
+void MazeGame::drawStatic(Canvas &c) {
   c.gradient({34, 16, 58}, {10, 6, 20});
   c.roundRect(ox - 7, oy - 7, FIELD + 14, FIELD + 14, 14, {44, 26, 72});
-  // portal
-  float ex = cellCenterX(exitX), ey = cellCenterY(exitY), pulse = 0.5f + 0.5f * sinf(time * 4);
-  c.glow(ex, ey, cell * 1.1f, cell * 1.1f, {255, 122, 200}, (uint8_t)(110 + 80 * pulse));
-  c.circle(ex, ey, cell * 0.28f, {255, 160, 220});
-  float spin = time * 200;
-  c.arc(ex, ey, cell * 0.36f, cell * 0.36f, spin, spin + 220, fmaxf(1.5f, cell * 0.07f), {255, 255, 255}, 200);
   // holes
   for (int i = 0; i < holeCount; i++) {
     float hx = cellCenterX(holes[i][0]), hy = cellCenterY(holes[i][1]);
@@ -425,6 +423,25 @@ void MazeGame::drawMaze(Canvas &c) {
       if (y == 0) c.line(x0, y0, x1, y0, w, WALL);
     }
   }
+}
+
+void MazeGame::drawMaze(Canvas &c) {
+  if (cache) {
+    if (!cacheValid) {
+      Canvas cc(cache, 240, 240);
+      drawStatic(cc);
+      cacheValid = true;
+    }
+    memcpy(c.pixels(), cache, 240 * 240 * 2);
+  } else {
+    drawStatic(c);
+  }
+  // portal
+  float ex = cellCenterX(exitX), ey = cellCenterY(exitY), pulse = 0.5f + 0.5f * sinf(time * 4);
+  c.glow(ex, ey, cell * 1.1f, cell * 1.1f, {255, 122, 200}, (uint8_t)(110 + 80 * pulse));
+  c.circle(ex, ey, cell * 0.28f, {255, 160, 220});
+  float spin = time * 200;
+  c.arc(ex, ey, cell * 0.36f, cell * 0.36f, spin, spin + 220, fmaxf(1.5f, cell * 0.07f), {255, 255, 255}, 200);
   // marble
   float r = radius;
   if (state == S_FALL) r *= clampf(1 - stateTime / 0.7f, 0.05f, 1);
@@ -434,17 +451,19 @@ void MazeGame::drawMaze(Canvas &c) {
   c.circle(bx - r * 0.35f, by - r * 0.38f, r * 0.28f, {255, 255, 255});
 
   if (lightRadius > 0) {
-    // Only the surroundings of the marble are lit, the portal still glows.
+    // Only the surroundings of the marble are lit (integer distances, sqrt only in the soft ring).
     uint16_t *px = c.pixels();
-    float inner = lightRadius * 0.55f, span = lightRadius - inner;
+    int inner = (int)(lightRadius * 0.55f), outer = (int)lightRadius;
+    int inner2 = inner * inner, outer2 = outer * outer, ibx = (int)bx, iby = (int)by;
     for (int y = 0; y < 240; y++) {
+      int dy = y - iby, dy2 = dy * dy;
+      uint16_t *row = px + y * 240;
       for (int x = 0; x < 240; x++) {
-        float d = sqrtf((x - bx) * (x - bx) + (y - by) * (y - by));
-        if (d <= inner) continue;
-        int keep = (int)(256 * (1 - clampf((d - inner) / span, 0, 1) * 0.94f));
-        uint16_t v = px[y * 240 + x];
-        int rr = ((v >> 11) & 31) * keep >> 8, gg = ((v >> 5) & 63) * keep >> 8, bb = (v & 31) * keep >> 8;
-        px[y * 240 + x] = (rr << 11) | (gg << 5) | bb;
+        int dx = x - ibx, d2 = dx * dx + dy2;
+        if (d2 <= inner2) continue;
+        int keep = d2 >= outer2 ? 15 : 256 - (int)((sqrtf((float)d2) - inner) * 241 / (outer - inner));
+        uint16_t v = row[x];
+        row[x] = (((((v >> 11) & 31) * keep) >> 8) << 11) | (((((v >> 5) & 63) * keep) >> 8) << 5) | (((v & 31) * keep) >> 8);
       }
     }
     c.glow(ex, ey, cell * 0.9f, cell * 0.9f, {255, 122, 200}, (uint8_t)(60 + 50 * pulse));

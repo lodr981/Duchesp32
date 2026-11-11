@@ -28,6 +28,8 @@ class MazeGame {
   // gx, gy, gz: filtered gravity from the accelerometer (g).
   MazeEvent update(float dt, float gx, float gy, float gz, Ghost &ghost, const GhostLook &look);
   void render(Canvas &c, Ghost &ghost, const GhostLook &look);
+  // Optional 240x240 buffer for the static maze (walls are drawn once per level).
+  void setCache(uint16_t *buffer) { cache = buffer; cacheValid = false; }
 
   const MazeMapping &mapping() const { return map; }
   uint8_t lastStars() const { return stars; }
@@ -72,6 +74,10 @@ class MazeGame {
 
   // marble
   float bx = 0, by = 0, vx = 0, vy = 0, radius = 6;
+  float physicsTime = 0;  // fixed-step accumulator
+  uint16_t *cache = nullptr;
+  bool cacheValid = false;
+  void drawStatic(Canvas &c);
   float neutral[3] = {0, 0, 1};
   float calSum[3] = {0, 0, 0};
   int calSamples = 0;

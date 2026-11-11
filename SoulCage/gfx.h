@@ -53,6 +53,7 @@ class Canvas {
   // Angles in degrees, 0 = right, clockwise (screen y grows down), like PIL.
   void arc(float cx, float cy, float rx, float ry, float a0, float a1, float width, Color c, uint8_t a = 255);
   void triangle(float x0, float y0, float x1, float y1, float x2, float y2, Color c, uint8_t a = 255);
+  void ring(float cx, float cy, float r, float width, Color c, uint8_t a = 255);  // smooth full circle outline
   void heart(float cx, float cy, float size, Color c, uint8_t a = 255);
   void star(float cx, float cy, float size, Color c, uint8_t a = 255);  // 4-point sparkle
   // Horizontal anti-aliased span on pixel row y (used for the ghost tail).

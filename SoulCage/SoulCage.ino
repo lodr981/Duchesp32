@@ -22,6 +22,7 @@
 #include "hunt.h"
 #include "imu.h"
 #include "maze.h"
+#include "wisp.h"
 #include "net.h"
 #include "ota.h"
 #include "pet.h"
@@ -62,6 +63,9 @@ static QrStage qrStage = QR_NONE;
 static uint32_t qrSince, qrLastDraw;
 
 static MazeGame maze;
+static WispGame wisp;
+static bool wispAfterCalibration;  // the light catcher waits for the tilt calibration
+static bool wispTap;
 static HuntData hunt;
 static HuntOverlay huntFx;
 static uint32_t lastMazeFrame;
@@ -315,10 +319,41 @@ static MazeMapping mazeMapping() {
   return m;
 }
 
+static void startWisp() {
+  maze.stop();
+  wisp.setCache((uint16_t *)soulScratch);
+  wisp.start(mazeMapping(), settings.wispBest, settings.jarLights);
+  wispTap = false;
+  qrStage = QR_NONE;
+}
+
+static bool startGame(bool lights, String &message) {
+  wakeSouls();
+  if (ghost.sleeping()) setNap(false);
+  qrStage = QR_NONE;
+  if (lights && settings.mazeCalibrated) {
+    startWisp();
+    message = "Lovec světýlek – hodně štěstí! 🏮";
+    return true;
+  }
+  if (lights) {
+    // First the "tilt right / towards you" lesson, then the game.
+    wispAfterCalibration = true;
+    maze.setCache((uint16_t *)soulScratch);
+    maze.start(1, mazeMapping());
+    maze.recalibrate();
+    message = "Nejdřív se naučíme ovládání – koukni na přívěsek";
+    return true;
+  }
+  return false;
+}
+
 bool appGameCommand(const String &cmd, const String &arg, String &message) {
   lastInteraction = millis();
   if (cmd == "stop") {
     maze.stop();
+    wisp.stop();
+    wispAfterCalibration = false;
     lastGhostFrame = lastSoulFrame = 0;
     message = "Hra ukončena";
     return true;
@@ -326,6 +361,9 @@ bool appGameCommand(const String &cmd, const String &arg, String &message) {
   if (!imuOk) {
     message = "Pohybový senzor nenalezen, labyrint nejde hrát";
     return false;
+  }
+  if (cmd == "lights") {
+    return startGame(true, message);
   }
   if (cmd != "start" && cmd != "calibrate") {
     message = "Neznámý příkaz";
@@ -342,6 +380,9 @@ bool appGameCommand(const String &cmd, const String &arg, String &message) {
     setNap(false);
   }
   qrStage = QR_NONE;
+  wisp.stop();
+  wispAfterCalibration = false;
+  maze.setCache((uint16_t *)soulScratch);
   maze.start(level, mazeMapping());
   if (cmd == "calibrate") {
     maze.recalibrate();
@@ -517,6 +558,8 @@ void appStatusJson(String &body) {
           ",\"freed\":" + String(hunt.freed) + ",\"hints\":[";
   for (int i = 0; i <= HUNT_MAX_SEALS; i++) body += (i ? "," : "") + jsonText(huntHint(i).c_str());
   body += "]}";
+  body += ",\"lights\":{\"active\":" + String(wisp.active() ? "true" : "false") + ",\"best\":" + String(settings.wispBest) +
+          ",\"jar\":" + String(settings.jarLights) + "}";
   body += ",\"game\":{\"active\":" + String(maze.active() ? "true" : "false") + ",\"level\":" + String(maze.level()) +
           ",\"unlocked\":" + String(settings.mazeUnlocked) + ",\"calibrated\":" +
           String(settings.mazeCalibrated ? "true" : "false") + ",\"stars\":[";
@@ -555,8 +598,9 @@ static void handleButton() {
         qrStage = QR_NONE;
         return;
       }
-      if (maze.active()) {
+      if (maze.active() || wisp.active()) {
         maze.stop();
+        wisp.stop();
         lastGhostFrame = lastSoulFrame = 0;
         return;
       }
@@ -574,8 +618,17 @@ static void handleImuEvents() {
   ImuEvent e;
   while ((e = imuPollEvent()) != IMU_NONE) {
     lastInteraction = millis();
+    if (wisp.active()) {
+      if (e == IMU_TAP || e == IMU_DOUBLE_TAP) wispTap = true;  // flash of the lantern
+      continue;
+    }
     if (maze.active()) {
       continue;  // tilting the maze shakes the pendant a lot, ignore gestures
+    }
+    if (e == IMU_DOUBLE_TAP && imuState().lyingFlat) {
+      String msg;  // held like a tray + double tap = play
+      startGame(true, msg);
+      continue;
     }
     if (qrStage != QR_NONE && (e == IMU_SHAKE || e == IMU_DOUBLE_TAP || e == IMU_STRONG_SHAKE)) {
       qrStage = QR_NONE;  // shake or tap skips the QR screen
@@ -818,7 +871,7 @@ static void applyShowItem(int item) {
 }
 
 static void surpriseTick() {
-  if (!settings.autoShow || otaBusy() || maze.active()) {
+  if (!settings.autoShow || otaBusy() || maze.active() || wisp.active()) {
     return;
   }
   uint32_t now = millis();
@@ -868,6 +921,48 @@ static void mazeRecordWin(bool allDone) {
   markPetDirty();
 }
 
+// Lovec světýlek replaces the animation while it runs.
+static bool wispLoop() {
+  if (!wisp.active()) {
+    return false;
+  }
+  uint32_t now = millis();
+  if (now - lastMazeFrame < 33) {
+    delay(1);
+    return true;
+  }
+  float dt = lastMazeFrame ? (now - lastMazeFrame) / 1000.0f : 0.033f;
+  if (dt > 0.1f) dt = 0.1f;
+  lastMazeFrame = now;
+  lastInteraction = now;
+  ImuState imu = imuState();
+  bool tap = wispTap;
+  wispTap = false;
+  if (wisp.update(dt, imu.fx, imu.fy, imu.fz, tap) == WISP_EV_OVER) {
+    if (wisp.record()) settings.wispBest = wisp.score();
+    settings.jarLights += wisp.caught();
+    settingsSave();
+    if (wisp.score() >= 20) {
+      PetResult r = pet.gameWin();
+      if (r == PET_LEVEL_UP) queuedAction = GA_LEVELUP;
+      markPetDirty();
+    }
+  }
+  if (wisp.playing() && imu.stillMs > 120000) {
+    wisp.stop();
+  }
+  if (!wisp.active()) {
+    lastGhostFrame = lastSoulFrame = 0;
+    return false;
+  }
+  if (settings.displayOn) {
+    Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
+    wisp.render(canvas);
+    displayPushNative();
+  }
+  return true;
+}
+
 // The tilt maze replaces the animation while it runs.
 static bool mazeLoop() {
   if (!maze.active()) {
@@ -883,7 +978,7 @@ static bool mazeLoop() {
   lastMazeFrame = now;
   lastInteraction = now;
   ImuState imu = imuState();
-  switch (maze.update(dt, imu.gx, imu.gy, imu.gz, ghost, look)) {
+  switch (maze.update(dt, imu.fx, imu.fy, imu.fz, ghost, look)) {
     case MAZE_EV_CALIBRATED: {
       const MazeMapping &m = maze.mapping();
       settings.mazeAxisX = m.axisX;
@@ -892,6 +987,11 @@ static bool mazeLoop() {
       settings.mazeSignY = m.signY;
       settings.mazeCalibrated = true;
       settingsSave();
+      if (wispAfterCalibration) {
+        wispAfterCalibration = false;
+        startWisp();
+        return true;
+      }
       break;
     }
     case MAZE_EV_LEVEL_DONE: mazeRecordWin(false); break;
@@ -1132,7 +1232,7 @@ void loop() {
     appSleepNow();
   }
 
-  if (mazeLoop()) {
+  if (wispLoop() || mazeLoop()) {
     return;
   }
   if (qrLoop()) {

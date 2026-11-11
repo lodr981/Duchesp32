@@ -24,6 +24,17 @@ od Vishala Soniho (MIT), rozšířený o:
 
 Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 16 MB flash), Li-Po baterie, vypínač.
 
+## Novinky 1.6 – Lovec světýlek 🏮
+
+- Nová hra **Lovec světýlek** (hraje se kdykoli, nic se neschovává): nakláněním se vozí lucernička po skle,
+  sbírají se modrá (1 bod) a zlatá (5 bodů) světýlka, combo až ×5, červení duchové berou srdíčka (3 životy),
+  **ťuknutí = záblesk**, který je vyžene (dobíjí se 4 s). Každých 20 s nová, těžší vlna, občas srdíčko navíc.
+  Rekord se ukládá, chycená světýlka se sbírají do **sklenice pro duši** (každých 100 = poděkování).
+- Spuštění v aplikaci, nebo **bez telefonu: přívěsek položit displejem nahoru a 2× ťuknout**. Konec tlačítkem BOOT.
+- **Plynulejší kulička** v labyrintu i lucernička: hry čtou rychlejší kanál akcelerometru, fyzika běží
+  v pevných krocích 240×/s, statické části (stěny, pozadí) se kreslí jen jednou a tma se počítá bez odmocnin.
+- Hra „Osvoboď duši“ (se schovávanými QR pečetěmi) zůstala, jen je v aplikaci až dole.
+
 ## Novinky 1.5 – Osvoboď duši 🔓
 
 - **Jen uvězněná duše** (výchozí): panda a mazlíček jsou schovaní, přívěsek střídá muže a ženu za sklem a ti

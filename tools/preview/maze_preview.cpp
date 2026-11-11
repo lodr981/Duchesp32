@@ -33,6 +33,8 @@ int main(int argc, char **argv) {
   GhostLook look;
   look.spooky = 0;
   MazeGame game;
+  std::vector<uint16_t> cache(240 * 240);
+  game.setCache(cache.data());
   MazeMapping uncalibrated;  // forces the calibration screens first
   game.start(first, uncalibrated);
   // Physical mounting of the sensor: screen right = -gy, screen down = +gx.

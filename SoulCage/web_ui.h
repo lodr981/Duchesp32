@@ -128,30 +128,18 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
 </section>
 
 <section class="card">
-  <div class="head"><h2>🔓 Osvoboď duši</h2><span class="muted" id="huntFreed"></span></div>
-  <div id="huntRun" class="hidden">
-    <div class="dots" id="huntDots" style="font-size:26px;letter-spacing:3px;text-align:center"></div>
-    <p class="muted" style="text-align:center;margin:4px 0 10px" id="huntText"></p>
-    <div class="grid2">
-      <button id="huntPrint">🖨️ Vytisknout pečetě</button>
-      <button class="danger" id="huntStop">⏹ Ukončit hru</button>
-    </div>
-  </div>
-  <div id="huntNew">
-    <div class="row"><label for="huntCount">Počet pečetí</label>
-      <select id="huntCount" style="width:auto"><option>3</option><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option><option>10</option></select></div>
-    <button class="primary" id="huntStart" style="width:100%">▶ Připravit novou hru</button>
-  </div>
-  <details class="more"><summary>✏️ Nápovědy (pro toho, kdo pečetě schovává)</summary>
-    <div id="huntHints"></div>
-    <button id="huntSaveHints" style="width:100%">Uložit nápovědy</button>
-  </details>
+  <div class="head"><h2>🏮 Lovec světýlek</h2><span class="muted" id="lightsBest"></span></div>
+  <button class="primary" id="lightsPlay" style="width:100%;font-size:17px">▶ Hrát</button>
+  <div style="margin-top:12px" class="muted">🫙 Sklenice pro duši: <b id="jarText"></b></div>
+  <div class="bar"><div id="jarBar" style="background:linear-gradient(90deg,#6ec3ff,var(--lilac))"></div></div>
   <details class="help"><summary>Jak se hraje?</summary>
     <ul>
-      <li>Rodič (nebo kamarádka) dá <b>Připravit novou hru</b> a <b>Vytisknout pečetě</b> – každá pečeť je papírek s QR kódem.</li>
-      <li>Pečetě rozstříhá a schová po bytě. Do Nápověd může napsat, kde je další (např. „Hledej, kde spí ponožky“).</li>
-      <li>Kdo pečeť najde, naskenuje ji foťákem iPhonu (připojeného k Wi-Fi přívěsku). Na mobilu se ukáže „Pečeť zlomena!“ a nápověda k další.</li>
-      <li>Na přívěsku se kolem okraje odemkne zámek, duše zabuší a sklo praskne. Po poslední pečeti duše <b>uteče na svobodu</b> 🎉</li>
+      <li>Nakláněj přívěsek a vozíš lucerničku 🏮 po skle. Sbírej modrá světýlka (1 bod) a vzácná zlatá (5 bodů, rychle mizí).</li>
+      <li>Když chytáš rychle za sebou, roste <b>combo ×2 … ×5</b>.</li>
+      <li>Červení duchové tě honí – dotek = přijdeš o srdíčko (máš 3). <b>Ťukni</b> na přívěsek a lucernička zableskne a vyžene je (pak se 4 s dobíjí).</li>
+      <li>Každých 20 s přijde nová vlna a je to těžší. Občas přiletí srdíčko navíc.</li>
+      <li>Hrát jde i bez telefonu: <b>polož přívěsek displejem nahoru a 2× ťukni</b>. Ukončíš tlačítkem BOOT.</li>
+      <li>Všechna chycená světýlka jdou do sklenice. Každých 100 = duše ti poděkuje 💜</li>
     </ul>
   </details>
 </section>
@@ -242,6 +230,35 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
     obráceně, dej Nastavit ovládání. Hru ukončíš tady nebo tlačítkem BOOT.</p>
   </details>
   <button id="gameCalibrate" style="width:100%">📏 Nastavit ovládání</button>
+</section>
+
+<section class="card">
+  <div class="head"><h2>🔓 Osvoboď duši</h2><span class="muted" id="huntFreed"></span></div>
+  <div id="huntRun" class="hidden">
+    <div class="dots" id="huntDots" style="font-size:26px;letter-spacing:3px;text-align:center"></div>
+    <p class="muted" style="text-align:center;margin:4px 0 10px" id="huntText"></p>
+    <div class="grid2">
+      <button id="huntPrint">🖨️ Vytisknout pečetě</button>
+      <button class="danger" id="huntStop">⏹ Ukončit hru</button>
+    </div>
+  </div>
+  <div id="huntNew">
+    <div class="row"><label for="huntCount">Počet pečetí</label>
+      <select id="huntCount" style="width:auto"><option>3</option><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option><option>10</option></select></div>
+    <button class="primary" id="huntStart" style="width:100%">▶ Připravit novou hru</button>
+  </div>
+  <details class="more"><summary>✏️ Nápovědy (pro toho, kdo pečetě schovává)</summary>
+    <div id="huntHints"></div>
+    <button id="huntSaveHints" style="width:100%">Uložit nápovědy</button>
+  </details>
+  <details class="help"><summary>Jak se hraje?</summary>
+    <ul>
+      <li>Rodič (nebo kamarádka) dá <b>Připravit novou hru</b> a <b>Vytisknout pečetě</b> – každá pečeť je papírek s QR kódem.</li>
+      <li>Pečetě rozstříhá a schová po bytě. Do Nápověd může napsat, kde je další (např. „Hledej, kde spí ponožky“).</li>
+      <li>Kdo pečeť najde, naskenuje ji foťákem iPhonu (připojeného k Wi-Fi přívěsku). Na mobilu se ukáže „Pečeť zlomena!“ a nápověda k další.</li>
+      <li>Na přívěsku se kolem okraje odemkne zámek, duše zabuší a sklo praskne. Po poslední pečeti duše <b>uteče na svobodu</b> 🎉</li>
+    </ul>
+  </details>
 </section>
 </div>
 
@@ -579,6 +596,16 @@ function render(s) {
     }
   }
 
+  // Lovec světýlek
+  const L = s.lights;
+  if (L) {
+    $('lightsBest').textContent = L.best ? '🏆 ' + L.best : '';
+    $('lightsPlay').textContent = L.active ? '🏮 Hraje se…' : '▶ Hrát';
+    $('lightsPlay').disabled = L.active;
+    $('jarText').textContent = (L.jar % 100) + '/100' + (L.jar >= 100 ? ' · plných sklenic: ' + Math.floor(L.jar / 100) : '');
+    $('jarBar').style.width = (L.jar % 100) + '%';
+  }
+
   // Maze
   const g = s.game;
   if (g) {
@@ -696,6 +723,7 @@ $('huntSaveHints').onclick = () => {
   document.querySelectorAll('#huntHints textarea').forEach(t => p['h' + t.id.slice(4)] = t.value);
   huntCmd(p);
 };
+$('lightsPlay').onclick = () => gameCmd({ cmd: 'lights' });
 $('gamePlay').onclick = () => gameCmd({ cmd: 'start' });
 $('gameStop').onclick = () => gameCmd({ cmd: 'stop' });
 $('gameCalibrate').onclick = () => gameCmd({ cmd: 'calibrate' });

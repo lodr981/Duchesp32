@@ -44,6 +44,8 @@ void settingsLoad() {
   settings.mazeSignX = p.getChar("mzsx", settings.mazeSignX);
   settings.mazeSignY = p.getChar("mzsy", settings.mazeSignY);
   settings.mazeCalibrated = p.getBool("mzcal", settings.mazeCalibrated);
+  settings.wispBest = p.getULong("wbest", settings.wispBest);
+  settings.jarLights = p.getULong("jar", settings.jarLights);
   settings.password = p.getString("pass", settings.password);
   settings.manifestUrl = p.getString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {
@@ -89,6 +91,8 @@ void settingsSave() {
   p.putChar("mzsx", settings.mazeSignX);
   p.putChar("mzsy", settings.mazeSignY);
   p.putBool("mzcal", settings.mazeCalibrated);
+  p.putULong("wbest", settings.wispBest);
+  p.putULong("jar", settings.jarLights);
   p.putString("pass", settings.password);
   p.putString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {

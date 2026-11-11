@@ -51,6 +51,7 @@ static void emit(ImuEvent e) {
 
 static void imuTask(void *) {
   float gx = 0, gy = 0, gz = 0;
+  float fx = 0, fy = 0, fz = 1;
   bool primed = false;
   uint32_t peaks[16] = {0};
   uint8_t peakHead = 0;
@@ -76,6 +77,9 @@ static void imuTask(void *) {
       gx = ax, gy = ay, gz = az;
       primed = true;
     }
+    fx += (ax - fx) * 0.35f;
+    fy += (ay - fy) * 0.35f;
+    fz += (az - fz) * 0.35f;
     gx += (ax - gx) * 0.08f;
     gy += (ay - gy) * 0.08f;
     gz += (az - gz) * 0.08f;
@@ -165,6 +169,7 @@ static void imuTask(void *) {
     shared.lyingFlat = len > 0.5f && fabsf(gz) > 0.85f * len;
     shared.stillMs = now - stillSince;
     shared.gx = gx, shared.gy = gy, shared.gz = gz;
+    shared.fx = fx, shared.fy = fy, shared.fz = fz;
     portEXIT_CRITICAL(&mux);
   }
 }

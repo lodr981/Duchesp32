@@ -171,6 +171,14 @@ void Canvas::triangle(float x0, float y0, float x1, float y1, float x2, float y2
         [&](float px, float py) { return triangleCoverage(px, py, v, sign); });
 }
 
+void Canvas::ring(float cx, float cy, float r, float width, Color c, uint8_t a) {
+  float outer = r + width / 2 + 1, hw = width / 2;
+  shade(cx - outer, cy - outer, cx + outer, cy + outer, c, a, [&](float px, float py) {
+    float d = sqrtf((px - cx) * (px - cx) + (py - cy) * (py - cy));
+    return clamp01(hw - fabsf(d - r) + 0.5f);
+  });
+}
+
 void Canvas::heart(float cx, float cy, float s, Color c, uint8_t a) {
   float r = s * 0.55f, lx = cx - s * 0.48f, rx = cx + s * 0.48f, ly = cy - s * 0.2f;
   float v[6] = {cx - s * 1.0f, cy - s * 0.02f, cx + s * 1.0f, cy - s * 0.02f, cx, cy + s * 1.05f};

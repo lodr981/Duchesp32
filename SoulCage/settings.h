@@ -45,7 +45,9 @@ struct Settings {
   uint8_t mazeStars[15] = {0};
   uint8_t mazeAxisX = 0, mazeAxisY = 1;
   int8_t mazeSignX = 1, mazeSignY = 1;
-  bool mazeCalibrated = false;  // QR codes for Wi-Fi and the app after switching on  // surprise mode: rotates scenes and souls
+  bool mazeCalibrated = false;
+  uint32_t wispBest = 0;   // Lovec světýlek high score
+  uint32_t jarLights = 0;  // all lights ever caught (the soul's jar)  // QR codes for Wi-Fi and the app after switching on  // surprise mode: rotates scenes and souls
   String password = DEFAULT_PASSWORD;
   String manifestUrl = DEFAULT_MANIFEST_URL;
   Network networks[MAX_NETWORKS];

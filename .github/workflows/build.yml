@@ -36,6 +36,9 @@ jobs:
           g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/maze_preview.cpp SoulCage/maze.cpp \
             SoulCage/gfx.cpp SoulCage/gfx_text.cpp SoulCage/ghost.cpp SoulCage/pet.cpp -o maze_preview
           mkdir -p maze-frames && ./maze_preview maze-frames 1 15 25   # autopilot must finish all 15 levels
+          g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/wisp_preview.cpp SoulCage/wisp.cpp \
+            SoulCage/gfx.cpp SoulCage/gfx_text.cpp -o wisp_preview
+          mkdir -p wisp-frames && ./wisp_preview wisp-frames 30 300
           g++ -O2 -std=c++17 -Wall -Wextra -Werror -Itools/preview/shim -ISoulCage tools/preview/souls_preview.cpp \
             SoulCage/gfx.cpp SoulCage/gfx_text.cpp SoulCage/hunt.cpp SoulCage/soul.cpp SoulCage/ghost.cpp SoulCage/pet.cpp \
             -lz -o souls_preview
