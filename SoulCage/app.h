@@ -12,4 +12,6 @@ bool appGhostAction(const String &id);  // false = unknown action
 bool appPetCommand(const String &cmd, const String &arg, String &message);
 void appSetScene(int scene);  // SCENE_COUNT = original trapped souls
 bool appCalibrate();
+// Maze game: cmd = start|stop|calibrate, arg = level for start. Returns a message for the UI.
+bool appGameCommand(const String &cmd, const String &arg, String &message);
 void appStatusJson(String &body);  // appends ghost/pet fields to the status JSON

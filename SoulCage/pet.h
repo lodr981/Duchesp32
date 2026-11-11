@@ -41,6 +41,7 @@ class Pet {
   PetResult play();
   PetResult pet();
   PetResult shake();
+  PetResult gameWin();  // a finished maze level
 
   bool hungry() const { return d.food < 30; }
   bool bored() const { return d.fun < 30; }

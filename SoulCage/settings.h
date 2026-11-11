@@ -39,7 +39,13 @@ struct Settings {
   String greeting = DEFAULT_GREETING;
   String subtitle = DEFAULT_SUBTITLE;
   bool autoShow = true;
-  bool qrOnBoot = true;  // QR codes for Wi-Fi and the app after switching on  // surprise mode: rotates scenes and souls
+  bool qrOnBoot = true;
+  // Tilt maze: progress and how the accelerometer maps to the screen
+  uint8_t mazeUnlocked = 1;
+  uint8_t mazeStars[15] = {0};
+  uint8_t mazeAxisX = 0, mazeAxisY = 1;
+  int8_t mazeSignX = 1, mazeSignY = 1;
+  bool mazeCalibrated = false;  // QR codes for Wi-Fi and the app after switching on  // surprise mode: rotates scenes and souls
   String password = DEFAULT_PASSWORD;
   String manifestUrl = DEFAULT_MANIFEST_URL;
   Network networks[MAX_NETWORKS];

@@ -24,6 +24,18 @@ od Vishala Soniho (MIT), rozšířený o:
 
 Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 16 MB flash), Li-Po baterie, vypínač.
 
+## Novinky 1.4 – Labyrint 🎮
+
+- Hra **Labyrint s kuličkou**: nakláněním přívěsku se kutálí kulička do svítícího portálu (fyzika, odrazy od stěn).
+- **15 levelů** (5×5 až 11×11), od levelu 8 **díry**, od levelu 11 **tma** (světlo jen kolem kuličky).
+- Po každém levelu tančí panda, létají konfety a jsou **1–3 hvězdy** podle času, po 15. levelu ohňostroj a
+  „Mistryně labyrintů!“. Postup a hvězdy se ukládají, každý level přidá duchovi zábavu a body péče.
+- Při první hře přívěsek naučí ovládání (drž rovně → nakloň doprava → nakloň k sobě), takže směr vždy sedí,
+  ať je senzor na desce otočený jakkoli.
+- Spouští se v aplikaci (Můj duch → Labyrint, výběr levelu), API `/api/game?cmd=start&level=3`, `cmd=stop`,
+  `cmd=calibrate`. Ukončí se i tlačítkem BOOT nebo po 2 minutách bez pohybu.
+- Všech 15 levelů v CI dohraje „autopilot“ (`tools/preview/maze_preview.cpp`), takže každý jde projít.
+
 ## Novinky 1.3
 
 - **QR kód po zapnutí** – po uvítání přívěsek ukáže QR kód své Wi-Fi (foťák iPhonu → Připojit, bez psaní hesla),

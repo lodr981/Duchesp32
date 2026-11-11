@@ -385,6 +385,15 @@ static void handleScene() {
   sendOk();
 }
 
+static void handleGame() {
+  if (!authorized()) {
+    return;
+  }
+  String message;
+  bool ok = appGameCommand(server.arg("cmd"), server.arg("level"), message);
+  sendJson(ok ? 200 : 400, String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":" + q(message) + "}");
+}
+
 static void handleCalibrate() {
   if (!authorized()) {
     return;
@@ -441,6 +450,7 @@ static void setupRoutes() {
   server.on("/api/pet", HTTP_POST, handlePet);
   server.on("/api/scene", HTTP_POST, handleScene);
   server.on("/api/imu/calibrate", HTTP_POST, handleCalibrate);
+  server.on("/api/game", HTTP_POST, handleGame);
   server.on("/api/reboot", HTTP_POST, handleReboot);
   server.on("/api/sleep", HTTP_POST, handleSleep);
   server.onNotFound(handleNotFound);

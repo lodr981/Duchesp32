@@ -173,6 +173,21 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
     </div>
   </details>
 </section>
+
+<section class="card">
+  <div class="head"><h2>🎮 Labyrint</h2><span class="muted" id="gameProgress"></span></div>
+  <button class="primary" id="gamePlay" style="width:100%;font-size:17px">▶ Hrát</button>
+  <button class="danger hidden" id="gameStop" style="width:100%;margin-top:8px">⏹ Konec hry</button>
+  <div class="grid3" id="levels" style="grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px"></div>
+  <details class="help"><summary>Jak se hraje?</summary>
+    <p>Nakláněj přívěsek a dokutálej kuličku do svítícího portálu 🌀. Je 15 levelů a každý je těžší:
+    od levelu 8 jsou v labyrintu díry (spadneš = znovu od startu) a od levelu 11 je tma – vidíš jen kolem kuličky 🔦.
+    Za rychlost dostaneš až 3 ⭐. Každý vyhraný level duchovi přidá zábavu.</p>
+    <p>Poprvé tě přívěsek naučí ovládání („drž rovně“, „nakloň doprava“, „nakloň k sobě“). Když kulička jezdí
+    obráceně, dej Nastavit ovládání. Hru ukončíš tady nebo tlačítkem BOOT.</p>
+  </details>
+  <button id="gameCalibrate" style="width:100%">📏 Nastavit ovládání</button>
+</section>
 </div>
 
 <!-- ============ SCENES ============ -->
@@ -472,6 +487,33 @@ function render(s) {
   sb.dataset.pet = p.asleep ? 'wake' : 'sleep';
   sb.innerHTML = p.asleep ? '<span>☀️</span>Probudit' : '<span>💤</span>Uspat';
 
+  // Maze
+  const g = s.game;
+  if (g) {
+    const total = g.stars.reduce((a, b) => a + b, 0);
+    $('gameProgress').textContent = '⭐ ' + total + '/45';
+    $('gamePlay').textContent = g.active ? '🎮 Hraje se level ' + g.level : '▶ Hrát level ' + g.unlocked;
+    $('gamePlay').disabled = g.active;
+    $('gameStop').classList.toggle('hidden', !g.active);
+    const lv = $('levels');
+    if (lv.children.length !== 15) {
+      lv.innerHTML = '';
+      for (let i = 1; i <= 15; i++) {
+        const b = document.createElement('button');
+        b.style.padding = '8px 2px';
+        b.style.fontSize = '13px';
+        b.onclick = () => gameCmd({ cmd: 'start', level: i });
+        lv.appendChild(b);
+      }
+    }
+    [...lv.children].forEach((b, i) => {
+      const locked = i + 1 > g.unlocked;
+      b.disabled = locked;
+      b.innerHTML = '<b>' + (locked ? '🔒' : i + 1) + '</b><br>' + (g.stars[i] ? '⭐'.repeat(g.stars[i]) : '<span class="muted">·</span>');
+      b.classList.toggle('active', g.active && g.level === i + 1);
+    });
+  }
+
   // Scenes
   const ghostMode = s.displayMode === 0;
   $('surpriseBtn').classList.toggle('active', s.autoShow);
@@ -538,6 +580,7 @@ async function refresh() {
   render(s);
 }
 
+function gameCmd(params) { return api('/api/game', params).then(j => { toast(j.message); refresh(); }).catch(e => toast(e.message)); }
 function saveSettings(params) { return api('/api/settings', params).catch(e => toast(e.message)); }
 function petCmd(params) { return api('/api/pet', params).then(j => { toast(j.message); refresh(); }).catch(e => toast(e.message)); }
 
@@ -548,6 +591,9 @@ document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => api('/api
 document.querySelectorAll('#spooky button').forEach(b => b.onclick = () => saveSettings({ spooky: b.dataset.v }).then(refresh));
 $('surpriseBtn').onclick = () => saveSettings({ autoShow: state && state.autoShow ? 0 : 1 }).then(() => { toast(state && state.autoShow ? 'Překvapení vypnuto' : 'Překvapení zapnuto 🎲'); refresh(); });
 
+$('gamePlay').onclick = () => gameCmd({ cmd: 'start' });
+$('gameStop').onclick = () => gameCmd({ cmd: 'stop' });
+$('gameCalibrate').onclick = () => gameCmd({ cmd: 'calibrate' });
 $('calibrate').onclick = () => api('/api/imu/calibrate', {}).then(() => { msg('imuMsg', 'Hotovo, poloha uložena ✓', 'ok'); refresh(); })
   .catch(e => msg('imuMsg', e.message, 'err'));
 $('tiltInvertBtn').onclick = () => saveSettings({ tiltInvert: state.tiltInvert ? 0 : 1 }).then(refresh);

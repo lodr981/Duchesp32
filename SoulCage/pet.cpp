@@ -102,6 +102,12 @@ PetResult Pet::pet() {
   return addXp(2);
 }
 
+PetResult Pet::gameWin() {
+  d.fun = clampStat(d.fun + 15);
+  d.energy = clampStat(d.energy - 3);
+  return addXp(4);
+}
+
 PetResult Pet::shake() {
   d.fun = clampStat(d.fun + 3);
   return addXp(1);

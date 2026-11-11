@@ -34,6 +34,15 @@ void settingsLoad() {
   settings.subtitle = p.getString("greet2", settings.subtitle);
   settings.autoShow = p.getBool("auto", settings.autoShow);
   settings.qrOnBoot = p.getBool("qr", settings.qrOnBoot);
+  settings.mazeUnlocked = p.getUChar("mzlvl", settings.mazeUnlocked);
+  if (p.getBytesLength("mzstars") == sizeof(settings.mazeStars)) {
+    p.getBytes("mzstars", settings.mazeStars, sizeof(settings.mazeStars));
+  }
+  settings.mazeAxisX = p.getUChar("mzax", settings.mazeAxisX);
+  settings.mazeAxisY = p.getUChar("mzay", settings.mazeAxisY);
+  settings.mazeSignX = p.getChar("mzsx", settings.mazeSignX);
+  settings.mazeSignY = p.getChar("mzsy", settings.mazeSignY);
+  settings.mazeCalibrated = p.getBool("mzcal", settings.mazeCalibrated);
   settings.password = p.getString("pass", settings.password);
   settings.manifestUrl = p.getString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {
@@ -72,6 +81,13 @@ void settingsSave() {
   p.putString("greet2", settings.subtitle);
   p.putBool("auto", settings.autoShow);
   p.putBool("qr", settings.qrOnBoot);
+  p.putUChar("mzlvl", settings.mazeUnlocked);
+  p.putBytes("mzstars", settings.mazeStars, sizeof(settings.mazeStars));
+  p.putUChar("mzax", settings.mazeAxisX);
+  p.putUChar("mzay", settings.mazeAxisY);
+  p.putChar("mzsx", settings.mazeSignX);
+  p.putChar("mzsy", settings.mazeSignY);
+  p.putBool("mzcal", settings.mazeCalibrated);
   p.putString("pass", settings.password);
   p.putString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {

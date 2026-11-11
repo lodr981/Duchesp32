@@ -20,6 +20,7 @@
 #include "ghost.h"
 #include "greeting.h"
 #include "imu.h"
+#include "maze.h"
 #include "net.h"
 #include "ota.h"
 #include "pet.h"
@@ -59,6 +60,9 @@ static uint32_t lastInteraction;  // for the sleep timer
 enum QrStage : uint8_t { QR_NONE, QR_WIFI, QR_APP };
 static QrStage qrStage = QR_NONE;
 static uint32_t qrSince, qrLastDraw;
+
+static MazeGame maze;
+static uint32_t lastMazeFrame;
 
 // Surprise mode: items 0..SCENE_COUNT-1 are ghost scenes, then the trapped souls.
 static uint32_t showUntil, showSwitchAt;
@@ -294,6 +298,53 @@ void appSetScene(int scene) {
   lastInteraction = millis();
 }
 
+static MazeMapping mazeMapping() {
+  MazeMapping m;
+  m.axisX = settings.mazeAxisX;
+  m.axisY = settings.mazeAxisY;
+  m.signX = settings.mazeSignX;
+  m.signY = settings.mazeSignY;
+  m.calibrated = settings.mazeCalibrated;
+  return m;
+}
+
+bool appGameCommand(const String &cmd, const String &arg, String &message) {
+  lastInteraction = millis();
+  if (cmd == "stop") {
+    maze.stop();
+    lastGhostFrame = lastSoulFrame = 0;
+    message = "Hra ukončena";
+    return true;
+  }
+  if (!imuOk) {
+    message = "Pohybový senzor nenalezen, labyrint nejde hrát";
+    return false;
+  }
+  if (cmd != "start" && cmd != "calibrate") {
+    message = "Neznámý příkaz";
+    return false;
+  }
+  int unlocked = settings.mazeUnlocked < 1 ? 1 : settings.mazeUnlocked;
+  int level = arg.length() ? arg.toInt() : unlocked;
+  if (level < 1 || level > unlocked) {
+    message = "Tenhle level je ještě zamčený 🔒";
+    return false;
+  }
+  wakeSouls();
+  if (ghost.sleeping()) {
+    setNap(false);
+  }
+  qrStage = QR_NONE;
+  maze.start(level, mazeMapping());
+  if (cmd == "calibrate") {
+    maze.recalibrate();
+    message = "Podívej se na přívěsek a nakloň ho, jak říká";
+  } else {
+    message = settings.mazeCalibrated ? String("Level ") + level + " – hodně štěstí!" : "Nejdřív nastavíme ovládání – koukni na přívěsek";
+  }
+  return true;
+}
+
 bool appCalibrate() {
   if (!imuCalibrate(settings.refX, settings.refY, settings.refZ)) {
     return false;
@@ -334,6 +385,11 @@ void appStatusJson(String &body) {
   body += ",\"mood\":" + jsonText(moodName(pet.mood(ghost.sleeping())));
   body += ",\"asleep\":" + String(ghost.sleeping() ? "true" : "false");
   body += ",\"ageMinutes\":" + String(d.ageMinutes) + "}";
+  body += ",\"game\":{\"active\":" + String(maze.active() ? "true" : "false") + ",\"level\":" + String(maze.level()) +
+          ",\"unlocked\":" + String(settings.mazeUnlocked) + ",\"calibrated\":" +
+          String(settings.mazeCalibrated ? "true" : "false") + ",\"stars\":[";
+  for (int i = 0; i < MAZE_LEVELS; i++) body += (i ? "," : "") + String(settings.mazeStars[i]);
+  body += "]}";
 }
 
 // ------------------------------------------------------------------ input
@@ -367,6 +423,11 @@ static void handleButton() {
         qrStage = QR_NONE;
         return;
       }
+      if (maze.active()) {
+        maze.stop();
+        lastGhostFrame = lastSoulFrame = 0;
+        return;
+      }
       if (settings.mode == MODE_SOULS) {
         appSelectSoul((settings.soul + 1) % soulCount());
       } else {
@@ -381,6 +442,9 @@ static void handleImuEvents() {
   ImuEvent e;
   while ((e = imuPollEvent()) != IMU_NONE) {
     lastInteraction = millis();
+    if (maze.active()) {
+      continue;  // tilting the maze shakes the pendant a lot, ignore gestures
+    }
     if (qrStage != QR_NONE && (e == IMU_SHAKE || e == IMU_DOUBLE_TAP || e == IMU_STRONG_SHAKE)) {
       qrStage = QR_NONE;  // shake or tap skips the QR screen
       continue;
@@ -639,7 +703,7 @@ static void applyShowItem(int item) {
 }
 
 static void surpriseTick() {
-  if (!settings.autoShow || otaBusy()) {
+  if (!settings.autoShow || otaBusy() || maze.active()) {
     return;
   }
   uint32_t now = millis();
@@ -670,6 +734,68 @@ static void surpriseTick() {
     soulDirector.event(SOUL_VANISH);
     showSwitchAt = now + 1100;
   }
+}
+
+static void mazeRecordWin(bool allDone) {
+  int lvl = maze.level();
+  if (lvl >= 1 && lvl <= MAZE_LEVELS && maze.lastStars() > settings.mazeStars[lvl - 1]) {
+    settings.mazeStars[lvl - 1] = maze.lastStars();
+  }
+  if (!allDone && lvl + 1 > settings.mazeUnlocked) {
+    settings.mazeUnlocked = lvl + 1;
+  }
+  settingsSave();
+  PetResult r = pet.gameWin();
+  if (r == PET_LEVEL_UP) {
+    queuedAction = GA_LEVELUP;
+    updateLook();
+  }
+  markPetDirty();
+}
+
+// The tilt maze replaces the animation while it runs.
+static bool mazeLoop() {
+  if (!maze.active()) {
+    return false;
+  }
+  uint32_t now = millis();
+  if (now - lastMazeFrame < 33) {
+    delay(1);
+    return true;
+  }
+  float dt = lastMazeFrame ? (now - lastMazeFrame) / 1000.0f : 0.033f;
+  if (dt > 0.1f) dt = 0.1f;
+  lastMazeFrame = now;
+  lastInteraction = now;
+  ImuState imu = imuState();
+  switch (maze.update(dt, imu.gx, imu.gy, imu.gz, ghost, look)) {
+    case MAZE_EV_CALIBRATED: {
+      const MazeMapping &m = maze.mapping();
+      settings.mazeAxisX = m.axisX;
+      settings.mazeAxisY = m.axisY;
+      settings.mazeSignX = m.signX;
+      settings.mazeSignY = m.signY;
+      settings.mazeCalibrated = true;
+      settingsSave();
+      break;
+    }
+    case MAZE_EV_LEVEL_DONE: mazeRecordWin(false); break;
+    case MAZE_EV_ALL_DONE: mazeRecordWin(true); break;
+    default: break;
+  }
+  if (maze.playing() && imu.stillMs > 120000) {
+    maze.stop();  // forgotten game
+  }
+  if (!maze.active()) {
+    lastGhostFrame = lastSoulFrame = 0;
+    return false;
+  }
+  if (settings.displayOn) {
+    Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
+    maze.render(canvas, ghost, look);
+    displayPushNative();
+  }
+  return true;
 }
 
 // Returns true while a QR screen is shown instead of the animation.
@@ -864,6 +990,9 @@ void loop() {
     appSleepNow();
   }
 
+  if (mazeLoop()) {
+    return;
+  }
   if (qrLoop()) {
     return;
   }
