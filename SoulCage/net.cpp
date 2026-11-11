@@ -159,6 +159,10 @@ static void handleSoul() {
   if (!authorized()) {
     return;
   }
+  if (server.hasArg("action")) {
+    appSoulAction(server.arg("action")) ? sendOk() : sendError(400, "Neznámá akce");
+    return;
+  }
   int count = soulCount();
   int index = settings.soul;
   String step = server.arg("step");

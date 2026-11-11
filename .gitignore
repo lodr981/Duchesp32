@@ -5,3 +5,5 @@ __pycache__/
 preview-frames/
 tools/preview/preview
 tools/preview/out/
+souls-frames/
+tools/preview/souls_preview

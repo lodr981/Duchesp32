@@ -145,6 +145,12 @@ details summary{cursor:pointer;color:var(--muted);margin:8px 0}
   <div id="soulsBox" class="hidden">
     <p class="muted">Uvězněné duše:</p>
     <div class="grid2" id="souls"></div>
+    <div class="grid3">
+      <button class="big" data-soul="bang"><span>✋</span>Buš</button>
+      <button class="big" data-soul="knock"><span>🤜</span>Klepej</button>
+      <button class="big" data-soul="escape"><span>💥</span>Útěk</button>
+    </div>
+    <p class="muted">Na přívěsku: zatřást = buší a praská sklo, hodně zatřást = rozbije sklo a uteče, 2× poklepat = klepe zpátky, vzhůru nohama = visí hlavou dolů.</p>
     <div class="row"><label for="speed">Rychlost <span class="muted" id="speedVal"></span></label></div>
     <input type="range" id="speed" min="30" max="300" step="10" dir="rtl">
     <div class="row"><label for="intro">Úvodní animace po zapnutí</label><input type="checkbox" id="intro"></div>
@@ -425,6 +431,7 @@ function petCmd(params) { return api('/api/pet', params).then(j => { toast(j.mes
 
 document.querySelectorAll('[data-food]').forEach(b => b.onclick = () => petCmd({ cmd: 'feed', food: b.dataset.food }));
 document.querySelectorAll('[data-pet]').forEach(b => b.onclick = () => petCmd({ cmd: b.dataset.pet }));
+document.querySelectorAll('[data-soul]').forEach(b => b.onclick = () => api('/api/soul', { action: b.dataset.soul }).catch(e => toast(e.message)));
 document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => api('/api/ghost', { action: b.dataset.act }).catch(e => toast(e.message)));
 document.querySelectorAll('#spooky button').forEach(b => b.onclick = () => saveSettings({ spooky: b.dataset.v }).then(refresh));
 

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 void appSelectSoul(int index);
+bool appSoulAction(const String &action);  // bang|knock|escape for the trapped souls
 void appApplySettings();  // settings changed through the API
 void appSetDisplay(bool on);
 void appSleepNow();

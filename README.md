@@ -6,7 +6,11 @@ od Vishala Soniho (MIT), rozšířený o:
 - **Panda-duch** – roztomile strašidelný duch kreslený živě (25 snímků/s), reaguje na pohyb přívěsku
   a na povely z telefonu: mává, tancuje, dělá BAF!, schovává se, točí se, leká se, motá se mu hlava, spí.
   5 scén (hřbitov, bambusový les, strašidelný dům, sklenice, zima), 4 barvy očí, 3 stupně strašidelnosti.
-  Původní „uvězněné duše“ zůstaly jako další scéna.
+- **Uvězněné duše** (původní fotografické animace) teď žijí: snímky jsou rozdělené na klipy (klid, bušení,
+  klepání, přiběhnutí ke sklu) a duše reaguje na pohyb – při zatřesení buší do skla a sklo praská, při
+  silném zatřesení sklo roztříští, obraz se rozpadne a duše uteče a pak se vrátí; 2× poklepání = klepe zpátky,
+  naklonění = duše se nakloní za sklem, vzhůru nohama = visí hlavou dolů, v klidu usne a vybledne.
+  Sama od sebe občas zabuší nebo zabliká světlo. Praskliny se po čase „zahojí“.
 - **Mazlíček (Tamagotchi)** – duch má sytost, zábavu a energii. Krmí se (bambus, sušenka, dýňový koláč,
   bonbon), hraje si, hladí se, spí. Péčí roste přes 5 levelů (Dušínek → Malý strašák → Strašidlo →
   Velký bubák → Král duchů) a dostává mašli, tesáčky, klobouk a korunu. Nikdy neumře – jen je smutný nebo ospalý.
@@ -60,6 +64,7 @@ aplikace v sekci „Zkratky pro iPhone“ (`Basic …`).
 | `http://soulcage.local/api/pet?cmd=play` | hrát si (dále `pet`, `sleep`, `wake`) |
 | `http://soulcage.local/api/scene?id=0` | scéna 0–4, `5` = uvězněné duše |
 | `http://soulcage.local/api/soul?step=next` | další uvězněná duše (`prev`, `random`) |
+| `http://soulcage.local/api/soul?action=bang` | uvězněná duše: `bang` (buší), `knock` (klepe), `escape` (útěk) |
 | `http://soulcage.local/api/soul?id=0` | konkrétní duše |
 | `http://soulcage.local/api/display` | displej zap/vyp (`?on=1` / `?on=0`) |
 | `http://soulcage.local/api/settings?brightness=40` | jas 5–100 (dále `eyeColor` 0–3, `spooky` 0–2, `frameDelay`, `sleepMinutes`, `wifiPolicy`, `wifiMinutes`, `intro`) |
@@ -124,6 +129,7 @@ python3 tools/convert_animations.py   # vygeneruje SoulCage/anim_data.h
 | `gfx.*` | malý vyhlazený 2D renderer do RGB565 (běží i na PC) |
 | `ghost.*` | panda-duch: kreslení, scény, akce a nálady |
 | `pet.*` | logika mazlíčka (potřeby, krmení, levely) |
+| `soul.*` | režisér uvězněných duší: klipy, reakce na pohyb, praskliny, šmouhy, glitch |
 | `imu.*` | akcelerometr QMI8658, rozpoznání zatřesení, poklepání, náklonu a klidu |
 | `display.*` | displej, jas (PWM), překryvné ikony |
 | `animations.*`, `anim_data.h` | komprimované snímky a jejich dekomprese |
@@ -143,6 +149,14 @@ mkdir -p out && ./preview out 0 3 1 0 30   # scéna, level, strašidelnost, barv
 ```
 
 Vzniknou snímky `out/f0000.ppm…` (např. `ffmpeg -i out/f%04d.ppm duch.gif`).
+
+Uvězněné duše (potřebuje zlib):
+
+```sh
+g++ -O2 -std=c++17 -Ishim -I../../SoulCage souls_preview.cpp ../../SoulCage/gfx.cpp ../../SoulCage/soul.cpp \
+  ../../SoulCage/ghost.cpp ../../SoulCage/pet.cpp -lz -o souls_preview
+mkdir -p out && ./souls_preview out 0 1 0 32   # duše 0/1, strašidelnost, barva, sekundy
+```
 
 ## Licence
 

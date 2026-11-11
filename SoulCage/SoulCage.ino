@@ -24,6 +24,7 @@
 #include "pet.h"
 #include "power.h"
 #include "settings.h"
+#include "soul.h"
 
 // TLS for OTA downloads needs more than the default 8 KB loop stack.
 SET_LOOP_TASK_STACK_SIZE(16 * 1024);
@@ -35,6 +36,10 @@ SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 static uint16_t frameIndex;
 static uint32_t nextFrameAt;
 static bool playingIntro;
+static SoulDirector soulDirector;
+static int directorSoul = -1;
+static uint8_t *soulScratch;  // decoded frame (PSRAM), so the photo can be shifted and flipped
+static uint32_t lastSoulFrame;
 
 // Ghost mode
 static Ghost ghost;
@@ -101,7 +106,15 @@ static void handlePetResult(PetResult r, GhostAction action, Food food = FOOD_BA
 
 // ------------------------------------------------------------------ app.h (web API)
 
+static void wakeSouls() {
+  if (soulDirector.sleepy()) {
+    soulDirector.setSleepy(false);
+    displaySetBrightness(settings.brightness);
+  }
+}
+
 void appSelectSoul(int index) {
+  wakeSouls();
   settings.soul = index;
   settings.mode = MODE_SOULS;
   settingsSave();
@@ -109,6 +122,23 @@ void appSelectSoul(int index) {
   frameIndex = 0;
   nextFrameAt = 0;
   lastInteraction = millis();
+}
+
+bool appSoulAction(const String &action) {
+  SoulEvent e;
+  if (action == "bang") e = SOUL_SHAKE;
+  else if (action == "knock") e = SOUL_KNOCK;
+  else if (action == "escape") e = SOUL_STRONG_SHAKE;
+  else return false;
+  if (settings.mode != MODE_SOULS) {
+    settings.mode = MODE_SOULS;
+    settingsSave();
+  }
+  wakeSouls();
+  playingIntro = false;
+  soulDirector.event(e);
+  lastInteraction = millis();
+  return true;
 }
 
 void appApplySettings() {
@@ -229,6 +259,7 @@ bool appPetCommand(const String &cmd, const String &arg, String &message) {
 }
 
 void appSetScene(int scene) {
+  wakeSouls();
   if (scene >= SCENE_COUNT) {
     settings.mode = MODE_SOULS;
   } else {
@@ -325,7 +356,19 @@ static void handleImuEvents() {
   while ((e = imuPollEvent()) != IMU_NONE) {
     lastInteraction = millis();
     if (settings.mode == MODE_SOULS) {
-      if (e == IMU_DOUBLE_TAP) appSelectSoul((settings.soul + 1) % soulCount());
+      bool wasSleepy = soulDirector.sleepy();
+      switch (e) {
+        case IMU_SHAKE: soulDirector.event(SOUL_SHAKE); break;
+        case IMU_STRONG_SHAKE: soulDirector.event(SOUL_STRONG_SHAKE); break;
+        case IMU_DOUBLE_TAP: soulDirector.event(SOUL_KNOCK); break;
+        case IMU_MOTION:
+          if (wasSleepy) soulDirector.event(SOUL_WAKE);
+          break;
+        default: break;
+      }
+      if (wasSleepy && !soulDirector.sleepy()) {
+        displaySetBrightness(settings.brightness);
+      }
       continue;
     }
     bool wasAsleep = ghost.sleeping();
@@ -437,13 +480,59 @@ static void ghostLoop() {
   displayPushNative();
 }
 
+// The souls after the intro: clips, reactions to motion and effects on the glass.
+static void soulsDirectorLoop() {
+  uint32_t now = millis();
+  uint32_t interval = soulDirector.sleepy() ? 80 : 40;
+  if (now - lastSoulFrame < interval || (int32_t)(now - pauseUntil) < 0) {
+    delay(1);
+    return;
+  }
+  float dt = lastSoulFrame ? (now - lastSoulFrame) / 1000.0f : 0.04f;
+  if (dt > 0.25f) dt = 0.25f;
+  lastSoulFrame = now;
+
+  const Animation &anim = soulAt(settings.soul);
+  if (directorSoul != settings.soul) {
+    directorSoul = settings.soul;
+    soulDirector.setSoul(anim.id, anim.frameCount);
+  }
+  ImuState imu = imuState();
+  GhostInput in;
+  if (imuOk) {
+    in.lean = imu.lean;
+    in.upsideDown = imu.upsideDown;
+    if (!soulDirector.sleepy() && imu.stillMs > NAP_AFTER_STILL_MS) {
+      soulDirector.setSleepy(true);
+      displaySetBrightness(max(5, settings.brightness / 4));
+    }
+  }
+  soulDirector.update(dt, settings.frameDelay / 1000.0f, in, look);
+  if (!settings.displayOn) {
+    return;
+  }
+  uint8_t *src = soulScratch ? soulScratch : (uint8_t *)displayBuffer();
+  if (!decodeFrame(anim, soulDirector.frame(), src, SCREEN_W * SCREEN_H * 2)) {
+    Serial.printf("Frame %u of %s failed\n", soulDirector.frame(), anim.id);
+    return;
+  }
+  Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
+  soulDirector.render(src, canvas, look);
+  drawStatusIcons(canvas);
+  displayPushNative();
+}
+
 static void soulsLoop() {
+  if (!playingIntro) {
+    soulsDirectorLoop();
+    return;
+  }
   uint32_t now = millis();
   if (!settings.displayOn || (int32_t)(now - nextFrameAt) < 0) {
     delay(2);
     return;
   }
-  const Animation &anim = playingIntro ? introAnimation() : soulAt(settings.soul);
+  const Animation &anim = introAnimation();
   uint8_t overlays = OVERLAY_NONE;
   if (battery().present && battery().millivolts < BAT_LOW_MV) {
     overlays |= OVERLAY_BATTERY_LOW;
@@ -544,6 +633,7 @@ void setup() {
   }
 
   playingIntro = settings.playIntro;
+  soulScratch = (uint8_t *)heap_caps_malloc(SCREEN_W * SCREEN_H * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!settings.displayOn) {
     displaySetPower(false);
   }

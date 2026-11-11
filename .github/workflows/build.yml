@@ -31,6 +31,9 @@ jobs:
           g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/preview.cpp \
             SoulCage/gfx.cpp SoulCage/ghost.cpp SoulCage/pet.cpp -o preview
           mkdir -p preview-frames && ./preview preview-frames 0 3 1 0 31
+          g++ -O2 -std=c++17 -Wall -Wextra -Werror -Itools/preview/shim -ISoulCage tools/preview/souls_preview.cpp \
+            SoulCage/gfx.cpp SoulCage/soul.cpp SoulCage/ghost.cpp SoulCage/pet.cpp -lz -o souls_preview
+          mkdir -p souls-frames && ./souls_preview souls-frames 1 1 0 32
 
       - name: Version matches tag
         if: startsWith(github.ref, 'refs/tags/v')
