@@ -8,3 +8,8 @@
 void drawGreeting(Canvas &c, Ghost &ghost, const GhostLook &look, const char *text, const char *subtitle, float t);
 // Full-screen message with optional progress (0..100, <0 = none).
 void drawMessage(Canvas &c, const char *title, const char *line, int progress);
+
+// QR code screen (Wi-Fi login or link). t = seconds shown, for a gentle pulse.
+void drawQr(Canvas &c, const char *payload, const char *title, const char *line, float t);
+// "WIFI:T:WPA;S:...;P:...;;" with the special characters escaped.
+void wifiQrPayload(char *out, int size, const char *ssid, const char *password);

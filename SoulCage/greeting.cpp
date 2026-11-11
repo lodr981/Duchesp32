@@ -1,5 +1,7 @@
 #include "greeting.h"
 #include <math.h>
+#include <string.h>
+#include "qrcodegen.h"
 
 static float clamp01(float v) {
   return v < 0 ? 0 : v > 1 ? 1 : v;
@@ -50,4 +52,60 @@ void drawMessage(Canvas &c, const char *title, const char *line, int progress) {
     c.roundRect(45, 154, 150, 12, 6, {60, 45, 90});
     if (p > 0) c.roundRect(45, 154, 150 * p < 12 ? 12 : 150 * p, 12, 6, {255, 140, 210});
   }
+}
+
+void wifiQrPayload(char *out, int size, const char *ssid, const char *password) {
+  int n = 0;
+  auto put = [&](char ch) {
+    if (n < size - 1) out[n++] = ch;
+  };
+  auto putEscaped = [&](const char *s) {
+    for (; *s; s++) {
+      if (strchr("\\;,:\"", *s)) put('\\');
+      put(*s);
+    }
+  };
+  for (const char *p = password && *password ? "WIFI:T:WPA;S:" : "WIFI:T:nopass;S:"; *p; p++) put(*p);
+  putEscaped(ssid);
+  if (password && *password) {
+    for (const char *p = ";P:"; *p; p++) put(*p);
+    putEscaped(password);
+  }
+  put(';');
+  put(';');
+  out[n] = 0;
+}
+
+void drawQr(Canvas &c, const char *payload, const char *title, const char *line, float t) {
+  // The code is generated once per payload.
+  static char cached[160];
+  static uint8_t qr[qrcodegen_BUFFER_LEN_FOR_VERSION(10)];
+  static bool ok;
+  if (strncmp(cached, payload, sizeof(cached)) != 0) {
+    strncpy(cached, payload, sizeof(cached) - 1);
+    uint8_t temp[qrcodegen_BUFFER_LEN_FOR_VERSION(10)];
+    ok = qrcodegen_encodeText(payload, temp, qr, qrcodegen_Ecc_MEDIUM, 1, 10, qrcodegen_Mask_AUTO, true);
+  }
+  c.gradient({58, 26, 96}, {20, 10, 36});
+  c.text(title, 120, 18, FONT_SMALL, {255, 255, 255});
+  if (!ok) {
+    c.text(line, 120, 110, FONT_SMALL, {220, 200, 255});
+    return;
+  }
+  int size = qrcodegen_getSize(qr);
+  int module = 150 / (size + 2);  // with a one-module quiet zone on each side
+  if (module < 2) module = 2;
+  int box = module * (size + 2);
+  int x0 = 120 - box / 2, y0 = 124 - box / 2;
+  float pulse = 0.5f + 0.5f * sinf(t * 3);
+  c.glow(120, 124, box * 0.75f, box * 0.75f, {255, 122, 200}, (uint8_t)(70 + 50 * pulse));
+  c.roundRect(x0 - 4, y0 - 4, box + 8, box + 8, 10, {255, 255, 255});
+  for (int y = 0; y < size; y++) {
+    for (int x = 0; x < size; x++) {
+      if (qrcodegen_getModule(qr, x, y)) {
+        c.rect(x0 + (x + 1) * module, y0 + (y + 1) * module, module, module, {20, 10, 36});
+      }
+    }
+  }
+  c.text(line, 120, y0 + box + 10, FONT_SMALL, {255, 190, 230});
 }

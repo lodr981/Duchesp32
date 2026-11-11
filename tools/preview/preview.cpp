@@ -56,6 +56,12 @@ int main(int argc, char **argv) {
       snprintf(name, sizeof(name), "/g%04d.ppm", i);
       writePpm(out + name, b.data());
     }
+    char wifi[160];
+    wifiQrPayload(wifi, sizeof(wifi), "Amelčin duch", "soulcage");
+    drawQr(cv, wifi, "Připoj se ke mně", "Namiř foťák iPhonu", 0.5f);
+    writePpm(out + "/qr1.ppm", b.data());
+    drawQr(cv, "http://192.168.4.1/", "Otevři aplikaci", "Ťukni na odkaz", 0.5f);
+    writePpm(out + "/qr2.ppm", b.data());
     drawMessage(cv, "Aktualizace", "Stahuji nový firmware…", 64);
     writePpm(out + "/msg1.ppm", b.data());
     drawMessage(cv, "Slabá baterie", "Nabij mě prosím 🔋", -1);

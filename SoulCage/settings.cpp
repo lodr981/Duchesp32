@@ -33,6 +33,7 @@ void settingsLoad() {
   settings.greeting = p.getString("greet", settings.greeting);
   settings.subtitle = p.getString("greet2", settings.subtitle);
   settings.autoShow = p.getBool("auto", settings.autoShow);
+  settings.qrOnBoot = p.getBool("qr", settings.qrOnBoot);
   settings.password = p.getString("pass", settings.password);
   settings.manifestUrl = p.getString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {
@@ -70,6 +71,7 @@ void settingsSave() {
   p.putString("greet", settings.greeting);
   p.putString("greet2", settings.subtitle);
   p.putBool("auto", settings.autoShow);
+  p.putBool("qr", settings.qrOnBoot);
   p.putString("pass", settings.password);
   p.putString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {

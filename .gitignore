@@ -7,3 +7,4 @@ tools/preview/preview
 tools/preview/out/
 souls-frames/
 tools/preview/souls_preview
+*.o

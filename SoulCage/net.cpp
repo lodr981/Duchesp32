@@ -25,6 +25,7 @@ static int networkIndex;
 static uint32_t connectStart, lastActivity;
 static Pending pending;
 static uint32_t pendingAt;
+static uint32_t uiServedAt;  // when the app was last used
 
 static String apSsid();
 
@@ -74,6 +75,7 @@ static void sendError(int code, const String &message) {
 // Safari would otherwise pop up its own login dialog.
 static bool authorized() {
   lastActivity = millis();
+  uiServedAt = millis();  // the app is in use
   if (server.authenticate(WEB_USER, settings.password.c_str())) {
     return true;
   }
@@ -148,6 +150,7 @@ static void handleStatus() {
   body += ",\"greeting\":" + q(settings.greeting);
   body += ",\"subtitle\":" + q(settings.subtitle);
   body += ",\"autoShow\":" + String(settings.autoShow ? "true" : "false");
+  body += ",\"qrOnBoot\":" + String(settings.qrOnBoot ? "true" : "false");
   body += ",\"hostname\":" + q(settings.hostname);
   body += ",\"networks\":[" + networks + "]";
   body += ",\"battery\":{\"present\":" + String(bat.present ? "true" : "false") + ",\"mv\":" + String(bat.millivolts) +
@@ -228,6 +231,7 @@ static void handleSettings() {
     settings.subtitle = server.arg("subtitle").substring(0, 40);
   }
   settings.autoShow = argLong("autoShow", settings.autoShow, 0, 1);
+  settings.qrOnBoot = argLong("qrOnBoot", settings.qrOnBoot, 0, 1);
   if (server.hasArg("manifestUrl")) {
     String url = server.arg("manifestUrl");
     settings.manifestUrl = url.startsWith("https://") ? url : DEFAULT_MANIFEST_URL;
@@ -416,6 +420,7 @@ static void handleNotFound() {
 static void setupRoutes() {
   server.on("/", HTTP_GET, [] {
     lastActivity = millis();
+    uiServedAt = millis();
     server.send_P(200, "text/html; charset=utf-8", WEB_UI);
   });
   server.on("/icon.png", HTTP_GET, [] {
@@ -543,6 +548,18 @@ void netStop() {
 
 bool netActive() {
   return mode != NET_OFF;
+}
+
+int netClients() {
+  return mode == NET_OFF ? 0 : WiFi.softAPgetStationNum();
+}
+
+uint32_t netUiServedAt() {
+  return uiServedAt;
+}
+
+String netHotspotName() {
+  return apSsid();
 }
 
 bool netOnline() {

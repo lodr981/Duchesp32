@@ -254,9 +254,12 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   <input id="deviceNameInput" maxlength="30" placeholder="Amelčin duch">
   <div class="row"><label for="petNameInput">Jméno ducha</label></div>
   <input id="petNameInput" maxlength="20" placeholder="Panďulák">
+  <div class="row"><label for="qrOnBoot">QR kód po zapnutí</label><input type="checkbox" id="qrOnBoot"></div>
   <div style="margin-top:12px"><button class="primary" id="saveMine" style="width:100%">Uložit</button></div>
   <details class="help"><summary>Co se kde ukáže?</summary>
-    <p>Uvítání se ukáže na displeji po každém zapnutí (duch u toho zamává). Jméno přívěsku je název jeho Wi-Fi,
+    <p>Uvítání se ukáže na displeji po každém zapnutí (duch u toho zamává). Pak přívěsek ukáže QR kód –
+    namiř na něj foťák iPhonu a připojíš se k jeho Wi-Fi bez psaní hesla. Druhý QR kód otevře tuhle aplikaci.
+    Zatřesením nebo dvojitým ťuknutím QR kód přeskočíš. Jméno přívěsku je název jeho Wi-Fi,
     kterou uvidíš v telefonu. Po změně jména se Wi-Fi na chvilku vypne a zapne – připoj se pak znovu.</p>
   </details>
 </section>
@@ -298,7 +301,8 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
     <input type="number" id="wifiMinutes" min="1" max="120" style="width:90px"></div>
   <details class="help"><summary>Jak se k přívěsku připojím?</summary>
     <ul>
-      <li>V telefonu v Nastavení → Wi-Fi vyber síť <b id="apName">přívěsku</b> (heslo = heslo zařízení) a otevři <b>http://192.168.4.1</b>.</li>
+      <li>Nejsnáz: po zapnutí přívěsek ukáže QR kód – namiř na něj foťák iPhonu a ťukni na „Připojit“.</li>
+      <li>Nebo ručně: v Nastavení → Wi-Fi vyber síť <b id="apName">přívěsku</b> (heslo = heslo zařízení) a otevři <b>http://192.168.4.1</b>.</li>
       <li>iPhone napíše „Bez připojení k internetu“ – to je v pořádku, internet jede dál přes mobilní data.</li>
       <li>Wi-Fi se vypne, až se k ní nikdo nepřipojuje (podle nastavení). Zapneš ji vypnutím a zapnutím přívěsku, nebo 3× rychle za sebou vypnout/zapnout (záchranný režim).</li>
       <li>Uložená domácí Wi-Fi (nebo hotspot iPhonu) je jen kvůli aktualizacím z internetu – hotspot přívěsku běží pořád.</li>
@@ -485,6 +489,7 @@ function render(s) {
   $('tiltInvertBtn').classList.toggle('active', s.tiltInvert);
 
   $('displayOn').checked = s.display;
+  $('qrOnBoot').checked = s.qrOnBoot;
 
   if (!formsFilled) {
     formsFilled = true;
@@ -548,6 +553,7 @@ $('calibrate').onclick = () => api('/api/imu/calibrate', {}).then(() => { msg('i
 $('tiltInvertBtn').onclick = () => saveSettings({ tiltInvert: state.tiltInvert ? 0 : 1 }).then(refresh);
 $('motionSensitivity').onchange = e => saveSettings({ motionSensitivity: e.target.value });
 
+$('qrOnBoot').onchange = e => saveSettings({ qrOnBoot: e.target.checked ? 1 : 0 });
 $('displayOn').onchange = e => api('/api/display', { on: e.target.checked ? 1 : 0 });
 $('brightness').oninput = () => $('brightnessVal').textContent = $('brightness').value + ' %';
 $('brightness').onchange = () => saveSettings({ brightness: $('brightness').value });

@@ -38,7 +38,8 @@ struct Settings {
   String deviceName = DEFAULT_DEVICE_NAME;  // hotspot name
   String greeting = DEFAULT_GREETING;
   String subtitle = DEFAULT_SUBTITLE;
-  bool autoShow = true;  // surprise mode: rotates scenes and souls
+  bool autoShow = true;
+  bool qrOnBoot = true;  // QR codes for Wi-Fi and the app after switching on  // surprise mode: rotates scenes and souls
   String password = DEFAULT_PASSWORD;
   String manifestUrl = DEFAULT_MANIFEST_URL;
   Network networks[MAX_NETWORKS];

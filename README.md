@@ -26,6 +26,9 @@ Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 
 
 ## Novinky 1.3
 
+- **QR kód po zapnutí** – po uvítání přívěsek ukáže QR kód své Wi-Fi (foťák iPhonu → Připojit, bez psaní hesla),
+  a když se telefon připojí, druhý QR kód otevře aplikaci. Zatřesení nebo 2× ťuknutí ho přeskočí, vypnout jde v aplikaci.
+  QR kódy generuje knihovna [qrcodegen](https://www.nayuki.io/page/qr-code-generator-library) (Project Nayuki, MIT).
 - **Uvítání po zapnutí** – „Ahoj Amelko!“ s mávajícím duchem (text, podtitulek i jméno přívěsku jdou změnit v aplikaci).
 - **Překvapení** – přívěsek sám chytře střídá všechny scény ducha i uvězněné duše (bez opakování, duše méně často
   v roztomilém režimu, když má mazlíček hlad, víc času dostane duch). Ruční výběr scény Překvapení vypne.
@@ -156,8 +159,9 @@ Kreslení ducha je nezávislé na hardwaru, takže jde vyzkoušet na PC:
 
 ```sh
 cd tools/preview
+gcc -O2 -c ../../SoulCage/qrcodegen.c -o qrcodegen.o
 g++ -O2 -std=c++17 -I../../SoulCage preview.cpp ../../SoulCage/gfx.cpp ../../SoulCage/gfx_text.cpp \
-  ../../SoulCage/greeting.cpp ../../SoulCage/ghost.cpp ../../SoulCage/pet.cpp -o preview
+  ../../SoulCage/greeting.cpp ../../SoulCage/ghost.cpp ../../SoulCage/pet.cpp qrcodegen.o -o preview
 mkdir -p out && ./preview out 0 3 1 0 30   # scéna, level, strašidelnost, barva očí, sekundy
 ```
 

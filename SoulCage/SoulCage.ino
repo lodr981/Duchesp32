@@ -55,6 +55,11 @@ static bool offlineApplied;
 
 static uint32_t lastInteraction;  // for the sleep timer
 
+// After switching on: QR for the hotspot until a phone joins, then QR for the app.
+enum QrStage : uint8_t { QR_NONE, QR_WIFI, QR_APP };
+static QrStage qrStage = QR_NONE;
+static uint32_t qrSince, qrLastDraw;
+
 // Surprise mode: items 0..SCENE_COUNT-1 are ghost scenes, then the trapped souls.
 static uint32_t showUntil, showSwitchAt;
 static int showPending = -1;
@@ -358,6 +363,10 @@ static void handleButton() {
   } else if (!pressed && down) {
     down = false;
     if (!longHandled && millis() - since > 50) {
+      if (qrStage != QR_NONE) {
+        qrStage = QR_NONE;
+        return;
+      }
       if (settings.mode == MODE_SOULS) {
         appSelectSoul((settings.soul + 1) % soulCount());
       } else {
@@ -372,6 +381,10 @@ static void handleImuEvents() {
   ImuEvent e;
   while ((e = imuPollEvent()) != IMU_NONE) {
     lastInteraction = millis();
+    if (qrStage != QR_NONE && (e == IMU_SHAKE || e == IMU_DOUBLE_TAP || e == IMU_STRONG_SHAKE)) {
+      qrStage = QR_NONE;  // shake or tap skips the QR screen
+      continue;
+    }
     if (settings.mode == MODE_SOULS) {
       bool wasSleepy = soulDirector.sleepy();
       switch (e) {
@@ -659,6 +672,45 @@ static void surpriseTick() {
   }
 }
 
+// Returns true while a QR screen is shown instead of the animation.
+static bool qrLoop() {
+  if (qrStage == QR_NONE) {
+    return false;
+  }
+  uint32_t now = millis();
+  float t = (now - qrSince) / 1000.0f;
+  if (!netActive() || !settings.displayOn) {
+    qrStage = QR_NONE;
+  } else if (qrStage == QR_WIFI && netClients() > 0) {
+    qrStage = QR_APP;
+    qrSince = now;
+    t = 0;
+  } else if (qrStage == QR_WIFI && t > 90) {
+    qrStage = QR_NONE;
+  } else if (qrStage == QR_APP && ((int32_t)(netUiServedAt() - qrSince) > 0 || t > 45)) {
+    qrStage = QR_NONE;
+  }
+  if (qrStage == QR_NONE) {
+    lastGhostFrame = lastSoulFrame = 0;
+    return false;
+  }
+  if (now - qrLastDraw >= 200) {
+    qrLastDraw = now;
+    Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
+    if (qrStage == QR_WIFI) {
+      char payload[160];
+      String ssid = netHotspotName();
+      wifiQrPayload(payload, sizeof(payload), ssid.c_str(), settings.password.length() >= 8 ? settings.password.c_str() : "");
+      drawQr(canvas, payload, "Připoj se ke mně", "Namiř foťák iPhonu", t);
+    } else {
+      drawQr(canvas, "http://192.168.4.1/", "Otevři aplikaci", "Ťukni na odkaz", t);
+    }
+    displayPushNative();
+  }
+  delay(2);
+  return true;
+}
+
 static void playGreeting() {
   if (settings.greeting.isEmpty() || !settings.displayOn || !displayBuffer()) {
     return;
@@ -778,6 +830,10 @@ void setup() {
   }
   lastInteraction = millis();
   lastPetSave = millis();
+  if (settings.qrOnBoot && netActive() && displayBuffer()) {
+    qrStage = QR_WIFI;
+    qrSince = millis();
+  }
 
 }
 
@@ -808,6 +864,9 @@ void loop() {
     appSleepNow();
   }
 
+  if (qrLoop()) {
+    return;
+  }
   if (settings.mode == MODE_GHOST) {
     ghostLoop();
   } else {
