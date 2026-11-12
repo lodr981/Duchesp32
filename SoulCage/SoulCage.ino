@@ -66,7 +66,6 @@ static uint32_t qrSince, qrLastDraw;
 
 static MazeGame maze;
 // Radar screens (weather / aircraft) instead of the animation.
-enum RadarMode : uint8_t { RADAR_OFF, RADAR_WEATHER, RADAR_PLANES };
 static RadarMode radarMode = RADAR_OFF;
 static RadarScreens radarScreens;
 static uint32_t lastRadarFrame, radarAlertAt, radarAutoUntil;

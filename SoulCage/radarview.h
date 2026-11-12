@@ -9,6 +9,9 @@
 #define RADAR_MAX_PLANES 40
 #define RADAR_PX 120  // weather frames are stored at half the display resolution
 
+// Which radar screen the pendant shows (SoulCage.ino).
+enum RadarMode : uint8_t { RADAR_OFF, RADAR_WEATHER, RADAR_PLANES };
+
 // Map window: centre and the distance from the centre to the display rim.
 struct GeoView {
   float lat = 50.6170f, lon = 15.1410f;  // Jenišovice u Jablonce nad Nisou
