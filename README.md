@@ -24,6 +24,25 @@ od Vishala Soniho (MIT), rozšířený o:
 
 Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 16 MB flash), Li-Po baterie, vypínač.
 
+## Novinky 1.7 – Meteoradar a radar letadel 🌦️✈️
+
+Podle projektu [MeteoPlaneRadar](https://github.com/petus/MeteoPlaneRadar) (chiptron.cz, MIT), překresleno
+pro malý kulatý displej 240×240 bez dotyku. Střed: **Jenišovice u Jablonce** (jde změnit v aplikaci).
+
+- **Meteoradar**: srážky z radarového kompozitu ČHMÚ (`opendata.chmi.cz`, PNG po 5 minutách, posledních 6 snímků
+  jako animace) přes obrys hranic a místní obce. Dole souhrn: „Bez srážek v okolí“, „Déšť 9 km Z“, „U nás prší“,
+  „Bouřka u nás!“. Dosah 25 / 50 / 100 km.
+- **Radar letadel**: živá data ADS-B (`opendata.adsb.fi`, záloha `api.adsb.lol`), zelený radarový displej
+  s kruhy vzdálenosti a otáčející se ručičkou, letadla jako šipky podle směru, barva podle výšky, volací znak
+  a výška u nejbližších, dole nejbližší letadlo se vzdáleností a směrem.
+- **Ovládání**: 1× ťuk přepíná meteoradar ↔ letadla, 2× ťuk nebo BOOT vrátí duši. V aplikaci karta Radar
+  (Scény) s volbou dosahu a místa.
+- **Upozornění na déšť**: když se déšť přiblíží na 15 km (nebo prší u vás), přívěsek sám na 30 s ukáže meteoradar
+  (nejvýš jednou za 30 minut). Radar je i v rotaci Překvapení (jen když je přívěsek na internetu).
+- Data se stahují na pozadí jen tehdy, když jsou potřeba. Přívěsek musí být připojený k Wi-Fi s internetem.
+- Mapa: hranice Natural Earth (public domain) převzaté z MeteoPlaneRadar, obce doplněné ručně
+  (`tools/make_map.py`). Knihovny PNGdec a ArduinoJson.
+
 ## Novinky 1.6 – Lovec světýlek 🏮
 
 - Nová hra **Lovec světýlek** (hraje se kdykoli, nic se neschovává): nakláněním se vozí lucernička po skle,
@@ -150,7 +169,7 @@ Kvůli nové tabulce oddílů je potřeba nahrát firmware jednou kabelem, pak u
 `soulcage-full.bin` z [Releases](https://github.com/lodr981/Duchesp32/releases/latest) na adresu **0x0** a dej *Program*. (Když se nepřipojí: drž BOOT, stiskni RESET.)
 
 **Arduino IDE:**
-1. Deska *esp32 by Espressif* verze 3.3.x, knihovna **TFT_eSPI 2.5.43**.
+1. Deska *esp32 by Espressif* verze 3.3.x, knihovny **TFT_eSPI 2.5.43**, **PNGdec** a **ArduinoJson** (7.x).
 2. Obsah `TFT_eSPI_Setup/Setup303_Waveshare_esp32s3_round_no_touch.h` zkopíruj do
    `Arduino/libraries/TFT_eSPI/User_Setup.h`.
 3. Nástroje: *ESP32S3 Dev Module*, Flash Size **16MB**, Partition Scheme **Custom**,

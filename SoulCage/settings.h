@@ -47,7 +47,13 @@ struct Settings {
   int8_t mazeSignX = 1, mazeSignY = 1;
   bool mazeCalibrated = false;
   uint32_t wispBest = 0;   // Lovec světýlek high score
-  uint32_t jarLights = 0;  // all lights ever caught (the soul's jar)  // QR codes for Wi-Fi and the app after switching on  // surprise mode: rotates scenes and souls
+  uint32_t jarLights = 0;  // all lights ever caught (the soul's jar)
+  // Radar screens (weather + aircraft) around home
+  String homeName = "Jenišovice";
+  float homeLat = 50.6170f, homeLon = 15.1410f;
+  uint8_t radarRange = 50;     // km from the centre to the rim: 25, 50 or 100
+  bool radarInShow = true;     // part of the surprise rotation (needs internet)
+  bool rainAlert = true;       // show the weather radar when rain comes close  // QR codes for Wi-Fi and the app after switching on  // surprise mode: rotates scenes and souls
   String password = DEFAULT_PASSWORD;
   String manifestUrl = DEFAULT_MANIFEST_URL;
   Network networks[MAX_NETWORKS];

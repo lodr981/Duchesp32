@@ -2,7 +2,7 @@
 #include "gfx.h"
 
 static const FontData &fontData(FontId id) {
-  return id == FONT_BIG ? FONT_BIG_DATA : FONT_SMALL_DATA;
+  return id == FONT_BIG ? FONT_BIG_DATA : id == FONT_TINY ? FONT_TINY_DATA : FONT_SMALL_DATA;
 }
 
 // Decodes one UTF-8 character and advances the pointer.

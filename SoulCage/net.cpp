@@ -233,6 +233,18 @@ static void handleSettings() {
   settings.autoShow = argLong("autoShow", settings.autoShow, 0, 1);
   settings.qrOnBoot = argLong("qrOnBoot", settings.qrOnBoot, 0, 1);
   settings.soulsOnly = argLong("soulsOnly", settings.soulsOnly, 0, 1);
+  if (server.hasArg("homeName")) settings.homeName = server.arg("homeName").substring(0, 30);
+  if (server.hasArg("homeLat") && server.hasArg("homeLon")) {
+    float lat = server.arg("homeLat").toFloat(), lon = server.arg("homeLon").toFloat();
+    if (lat > 35 && lat < 70 && lon > -25 && lon < 45) {  // Europe
+      settings.homeLat = lat;
+      settings.homeLon = lon;
+    }
+  }
+  long range = argLong("radarRange", settings.radarRange, 10, 150);
+  settings.radarRange = range <= 35 ? 25 : range <= 75 ? 50 : 100;
+  settings.radarInShow = argLong("radarInShow", settings.radarInShow, 0, 1);
+  settings.rainAlert = argLong("rainAlert", settings.rainAlert, 0, 1);
   if (server.hasArg("manifestUrl")) {
     String url = server.arg("manifestUrl");
     settings.manifestUrl = url.startsWith("https://") ? url : DEFAULT_MANIFEST_URL;
@@ -465,6 +477,13 @@ static void handlePrint() {
   server.sendContent("");
 }
 
+static void handleRadar() {
+  if (!authorized()) {
+    return;
+  }
+  appRadar(server.arg("show")) ? sendOk() : sendError(400, "Neznámý radar");
+}
+
 static void handleCalibrate() {
   if (!authorized()) {
     return;
@@ -523,6 +542,7 @@ static void setupRoutes() {
   server.on("/api/imu/calibrate", HTTP_POST, handleCalibrate);
   server.on("/api/game", HTTP_POST, handleGame);
   server.on("/api/hunt", HTTP_POST, handleHunt);
+  server.on("/api/radar", HTTP_POST, handleRadar);
   server.on("/s", HTTP_GET, handleScan);
   server.on("/hunt/print", HTTP_GET, handlePrint);
   server.on("/api/reboot", HTTP_POST, handleReboot);
@@ -672,7 +692,7 @@ void netLoop() {
     bool connected = WiFi.status() == WL_CONNECTED;
     if (connected && !staConnected) {
       staConnected = true;
-      configTime(0, 0, "pool.ntp.org", "time.google.com");  // pet ageing while switched off
+      configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.google.com");  // pet ageing, local time for the radar
       Serial.printf("Wi-Fi: connected to %s (%s)\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     } else if (!connected) {
       staConnected = false;

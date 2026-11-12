@@ -46,6 +46,12 @@ void settingsLoad() {
   settings.mazeCalibrated = p.getBool("mzcal", settings.mazeCalibrated);
   settings.wispBest = p.getULong("wbest", settings.wispBest);
   settings.jarLights = p.getULong("jar", settings.jarLights);
+  settings.homeName = p.getString("hname", settings.homeName);
+  settings.homeLat = p.getFloat("hlat", settings.homeLat);
+  settings.homeLon = p.getFloat("hlon", settings.homeLon);
+  settings.radarRange = p.getUChar("rrange", settings.radarRange);
+  settings.radarInShow = p.getBool("rshow", settings.radarInShow);
+  settings.rainAlert = p.getBool("ralert", settings.rainAlert);
   settings.password = p.getString("pass", settings.password);
   settings.manifestUrl = p.getString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {
@@ -93,6 +99,12 @@ void settingsSave() {
   p.putBool("mzcal", settings.mazeCalibrated);
   p.putULong("wbest", settings.wispBest);
   p.putULong("jar", settings.jarLights);
+  p.putString("hname", settings.homeName);
+  p.putFloat("hlat", settings.homeLat);
+  p.putFloat("hlon", settings.homeLon);
+  p.putUChar("rrange", settings.radarRange);
+  p.putBool("rshow", settings.radarInShow);
+  p.putBool("ralert", settings.rainAlert);
   p.putString("pass", settings.password);
   p.putString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {

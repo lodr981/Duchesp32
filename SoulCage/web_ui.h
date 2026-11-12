@@ -281,6 +281,34 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   </details>
 </section>
 
+<section class="card">
+  <div class="head"><h2>🌦️ Radar</h2><span class="muted" id="radarNet"></span></div>
+  <div class="muted" id="radarRain" style="margin:-4px 0 8px"></div>
+  <div class="grid3">
+    <button class="big" data-radar="weather"><span>🌧️</span>Meteoradar</button>
+    <button class="big" data-radar="planes"><span>✈️</span>Letadla</button>
+    <button class="big" data-radar="off"><span>👻</span>Zpět</button>
+  </div>
+  <p class="muted" style="margin:10px 0 6px">Dosah</p>
+  <div class="seg" id="radarRange"><button data-v="25">25 km</button><button data-v="50">50 km</button><button data-v="100">100 km</button></div>
+  <div class="row"><label for="radarInShow">Radar v Překvapení</label><input type="checkbox" id="radarInShow"></div>
+  <div class="row"><label for="rainAlert">Ukázat radar, když se blíží déšť</label><input type="checkbox" id="rainAlert"></div>
+  <details class="more"><summary>📍 Místo (střed mapy)</summary>
+    <input id="homeName" maxlength="30" placeholder="Název">
+    <div class="grid2"><input id="homeLat" inputmode="decimal" placeholder="Šířka 50.617"><input id="homeLon" inputmode="decimal" placeholder="Délka 15.141"></div>
+    <div class="grid2"><button id="homeJen">Jenišovice</button><button class="primary" id="homeSave">Uložit místo</button></div>
+  </details>
+  <details class="help"><summary>Jak radar funguje?</summary>
+    <ul>
+      <li><b>Meteoradar</b> ukazuje srážky z radarů ČHMÚ za poslední půlhodinu (snímek po 5 minutách) a napíše, kde je nejbližší déšť.</li>
+      <li><b>Letadla</b> jsou živá data ADS-B (adsb.fi / adsb.lol): šipka = směr letu, barva = výška (oranžová nízko, modrá vysoko).</li>
+      <li>Na přívěsku <b>1× ťuk</b> přepíná meteoradar ↔ letadla, <b>2× ťuk</b> nebo tlačítko BOOT vrátí duši.</li>
+      <li>Přívěsek musí být na internetu – v Nastavení → Wi-Fi ulož domácí Wi-Fi nebo hotspot iPhonu.</li>
+      <li>Nápad a zdroje dat podle projektu <b>MeteoPlaneRadar</b> (chiptron.cz).</li>
+    </ul>
+  </details>
+</section>
+
 <section class="card ghost-only">
   <div class="head"><h2>Scéna</h2></div>
   <div class="grid2" id="scenes"></div>
@@ -481,7 +509,7 @@ const $ = id => document.getElementById(id);
 const store = { get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
                 set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
 let auth = store.get('sc_auth');
-let state = null, formsFilled = false, offline = 0, toastTimer;
+let state = null, formsFilled = false, radarFilled = false, offline = 0, toastTimer;
 const SCENE_ICONS = ['🪦', '🎋', '🏚️', '🫙', '❄️'];
 
 function b64(s) { return btoa(String.fromCharCode(...new TextEncoder().encode(s))); }
@@ -593,6 +621,21 @@ function render(s) {
       }
       hh.innerHTML = html;
       h.hints.forEach((t, i) => { if ($('hint' + i)) $('hint' + i).value = t; });
+    }
+  }
+
+  // Radar
+  const R = s.radar;
+  if (R) {
+    $('radarNet').textContent = R.online ? '🌐 online' : '📵 offline';
+    $('radarRain').textContent = R.online ? (R.rain ? '🌧️ ' + R.rain : (R.weatherStatus || '')) : 'Přívěsek není na internetu – ulož Wi-Fi v Nastavení.';
+    document.querySelectorAll('[data-radar]').forEach(b => b.classList.toggle('active', (b.dataset.radar === 'weather' && R.mode === 1) || (b.dataset.radar === 'planes' && R.mode === 2)));
+    document.querySelectorAll('#radarRange button').forEach(b => b.classList.toggle('active', +b.dataset.v === R.range));
+    $('radarInShow').checked = R.inShow;
+    $('rainAlert').checked = R.rainAlert;
+    if (!radarFilled) {
+      radarFilled = true;
+      $('homeName').value = R.homeName; $('homeLat').value = R.lat; $('homeLon').value = R.lon;
     }
   }
 
@@ -723,6 +766,13 @@ $('huntSaveHints').onclick = () => {
   document.querySelectorAll('#huntHints textarea').forEach(t => p['h' + t.id.slice(4)] = t.value);
   huntCmd(p);
 };
+document.querySelectorAll('[data-radar]').forEach(b => b.onclick = () => api('/api/radar', { show: b.dataset.radar }).then(refresh).catch(e => toast(e.message)));
+document.querySelectorAll('#radarRange button').forEach(b => b.onclick = () => saveSettings({ radarRange: b.dataset.v }).then(refresh));
+$('radarInShow').onchange = e => saveSettings({ radarInShow: e.target.checked ? 1 : 0 });
+$('rainAlert').onchange = e => saveSettings({ rainAlert: e.target.checked ? 1 : 0 });
+$('homeJen').onclick = () => { $('homeName').value = 'Jenišovice'; $('homeLat').value = '50.6170'; $('homeLon').value = '15.1410'; };
+$('homeSave').onclick = () => saveSettings({ homeName: $('homeName').value, homeLat: $('homeLat').value.replace(',', '.'), homeLon: $('homeLon').value.replace(',', '.') })
+  .then(() => { toast('Místo uloženo 📍'); refresh(); });
 $('lightsPlay').onclick = () => gameCmd({ cmd: 'lights' });
 $('gamePlay').onclick = () => gameCmd({ cmd: 'start' });
 $('gameStop').onclick = () => gameCmd({ cmd: 'stop' });

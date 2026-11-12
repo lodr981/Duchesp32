@@ -39,6 +39,9 @@ jobs:
           g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/wisp_preview.cpp SoulCage/wisp.cpp \
             SoulCage/gfx.cpp SoulCage/gfx_text.cpp -o wisp_preview
           mkdir -p wisp-frames && ./wisp_preview wisp-frames 30 300
+          g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/radar_preview.cpp SoulCage/radarview.cpp \
+            SoulCage/gfx.cpp SoulCage/gfx_text.cpp -o radar_preview
+          mkdir -p radar-frames && ./radar_preview radar-frames
           g++ -O2 -std=c++17 -Wall -Wextra -Werror -Itools/preview/shim -ISoulCage tools/preview/souls_preview.cpp \
             SoulCage/gfx.cpp SoulCage/gfx_text.cpp SoulCage/hunt.cpp SoulCage/soul.cpp SoulCage/ghost.cpp SoulCage/pet.cpp \
             -lz -o souls_preview
@@ -55,7 +58,7 @@ jobs:
           path: |
             ~/.arduino15
             ~/Arduino/libraries
-          key: arduino-${{ env.ESP32_CORE }}-${{ env.TFT_ESPI }}
+          key: arduino-${{ env.ESP32_CORE }}-${{ env.TFT_ESPI }}-pngdec-json
 
       - uses: arduino/setup-arduino-cli@v2
 
@@ -66,6 +69,7 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@${ESP32_CORE}
           arduino-cli lib install "TFT_eSPI@${TFT_ESPI}"
+          arduino-cli lib install "PNGdec" "ArduinoJson"
           # TFT_eSPI is configured by editing the library: use the Waveshare setup.
           cp TFT_eSPI_Setup/Setup303_Waveshare_esp32s3_round_no_touch.h ~/Arduino/libraries/TFT_eSPI/User_Setup.h
 

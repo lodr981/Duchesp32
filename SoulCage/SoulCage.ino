@@ -27,6 +27,8 @@
 #include "ota.h"
 #include "pet.h"
 #include "power.h"
+#include "radarnet.h"
+#include "radarview.h"
 #include "settings.h"
 #include "soul.h"
 
@@ -63,6 +65,11 @@ static QrStage qrStage = QR_NONE;
 static uint32_t qrSince, qrLastDraw;
 
 static MazeGame maze;
+// Radar screens (weather / aircraft) instead of the animation.
+enum RadarMode : uint8_t { RADAR_OFF, RADAR_WEATHER, RADAR_PLANES };
+static RadarMode radarMode = RADAR_OFF;
+static RadarScreens radarScreens;
+static uint32_t lastRadarFrame, radarAlertAt, radarAutoUntil;
 static WispGame wisp;
 static bool wispAfterCalibration;  // the light catcher waits for the tilt calibration
 static bool wispTap;
@@ -144,6 +151,7 @@ static void stopSurprise() {
 
 void appSelectSoul(int index) {
   wakeSouls();
+  radarMode = RADAR_OFF;
   stopSurprise();
   settings.soul = index;
   settings.mode = MODE_SOULS;
@@ -182,6 +190,7 @@ void appApplySettings() {
     netStart(false);
   }
   imuConfigure(settings.tiltInvert, settings.motionSensitivity);
+  radarNetSetView(homeView());
   enforceSoulsOnly();
   updateLook();
   nextFrameAt = 0;
@@ -296,6 +305,7 @@ bool appPetCommand(const String &cmd, const String &arg, String &message) {
 
 void appSetScene(int scene) {
   wakeSouls();
+  radarMode = RADAR_OFF;
   stopSurprise();
   if (scene >= SCENE_COUNT) {
     settings.mode = MODE_SOULS;
@@ -309,6 +319,40 @@ void appSetScene(int scene) {
   lastInteraction = millis();
 }
 
+static GeoView homeView() {
+  GeoView v;
+  v.lat = settings.homeLat;
+  v.lon = settings.homeLon;
+  v.rangeKm = settings.radarRange;
+  return v;
+}
+
+static void setRadar(RadarMode m) {
+  radarMode = m;
+  radarAutoUntil = 0;
+  lastGhostFrame = lastSoulFrame = lastRadarFrame = 0;
+  if (m != RADAR_OFF) {
+    wakeSouls();
+    maze.stop();
+    wisp.stop();
+    qrStage = QR_NONE;
+    radarNetDemand(m == RADAR_WEATHER, m == RADAR_PLANES);
+  }
+}
+
+bool appRadar(const String &show) {
+  lastInteraction = millis();
+  if (show == "weather") setRadar(RADAR_WEATHER);
+  else if (show == "planes") setRadar(RADAR_PLANES);
+  else if (show == "off") setRadar(RADAR_OFF);
+  else return false;
+  if (show != "off" && settings.autoShow) {
+    settings.autoShow = false;  // a chosen screen stays
+    settingsSave();
+  }
+  return true;
+}
+
 static MazeMapping mazeMapping() {
   MazeMapping m;
   m.axisX = settings.mazeAxisX;
@@ -320,6 +364,7 @@ static MazeMapping mazeMapping() {
 }
 
 static void startWisp() {
+  radarMode = RADAR_OFF;
   maze.stop();
   wisp.setCache((uint16_t *)soulScratch);
   wisp.start(mazeMapping(), settings.wispBest, settings.jarLights);
@@ -380,6 +425,7 @@ bool appGameCommand(const String &cmd, const String &arg, String &message) {
     setNap(false);
   }
   qrStage = QR_NONE;
+  radarMode = RADAR_OFF;
   wisp.stop();
   wispAfterCalibration = false;
   maze.setCache((uint16_t *)soulScratch);
@@ -558,6 +604,23 @@ void appStatusJson(String &body) {
           ",\"freed\":" + String(hunt.freed) + ",\"hints\":[";
   for (int i = 0; i <= HUNT_MAX_SEALS; i++) body += (i ? "," : "") + jsonText(huntHint(i).c_str());
   body += "]}";
+  {
+    RainInfo ri;
+    String rain = "";
+    if (radarRainSoon(ri)) {
+      char b[48];
+      if (ri.level == 0) snprintf(b, sizeof(b), "bez srážek v okolí");
+      else if (ri.atHome) snprintf(b, sizeof(b), "u nás prší");
+      else snprintf(b, sizeof(b), "déšť %.0f km %s", ri.distanceKm, bearingName(ri.bearingDeg));
+      rain = b;
+    }
+    body += ",\"radar\":{\"mode\":" + String(radarMode) + ",\"homeName\":" + jsonText(settings.homeName.c_str()) +
+            ",\"lat\":" + String(settings.homeLat, 4) + ",\"lon\":" + String(settings.homeLon, 4) +
+            ",\"range\":" + String(settings.radarRange) + ",\"inShow\":" + String(settings.radarInShow ? "true" : "false") +
+            ",\"rainAlert\":" + String(settings.rainAlert ? "true" : "false") +
+            ",\"online\":" + String(netOnline() ? "true" : "false") + ",\"rain\":" + jsonText(rain.c_str()) +
+            ",\"weatherStatus\":" + jsonText(radarStatus(true)) + "}";
+  }
   body += ",\"lights\":{\"active\":" + String(wisp.active() ? "true" : "false") + ",\"best\":" + String(settings.wispBest) +
           ",\"jar\":" + String(settings.jarLights) + "}";
   body += ",\"game\":{\"active\":" + String(maze.active() ? "true" : "false") + ",\"level\":" + String(maze.level()) +
@@ -598,6 +661,10 @@ static void handleButton() {
         qrStage = QR_NONE;
         return;
       }
+      if (radarMode != RADAR_OFF) {
+        setRadar(RADAR_OFF);
+        return;
+      }
       if (maze.active() || wisp.active()) {
         maze.stop();
         wisp.stop();
@@ -620,6 +687,11 @@ static void handleImuEvents() {
     lastInteraction = millis();
     if (wisp.active()) {
       if (e == IMU_TAP || e == IMU_DOUBLE_TAP) wispTap = true;  // flash of the lantern
+      continue;
+    }
+    if (radarMode != RADAR_OFF) {
+      if (e == IMU_TAP) setRadar(radarMode == RADAR_WEATHER ? RADAR_PLANES : RADAR_WEATHER);
+      if (e == IMU_DOUBLE_TAP) setRadar(RADAR_OFF);
       continue;
     }
     if (maze.active()) {
@@ -815,24 +887,27 @@ static void soulsLoop() {
 // ------------------------------------------------------------------ surprise mode
 
 static int currentShowItem() {
+  if (radarMode != RADAR_OFF) return SCENE_COUNT + soulCount() + (radarMode == RADAR_PLANES);
   return settings.mode == MODE_SOULS ? SCENE_COUNT + settings.soul : settings.scene;
 }
 
 static uint32_t showDuration(int item) {
   uint32_t r = esp_random();
+  if (item >= SCENE_COUNT + (int)soulCount()) return 25000 + r % 15000;  // radar
   return item < SCENE_COUNT ? 70000 + r % 80000 : 35000 + r % 45000;
 }
 
 // Weighted random pick: no immediate repeats, souls less often in cute mode,
 // and the ghost gets more time when the pet needs care.
 static int pickShowItem() {
-  int n = SCENE_COUNT + soulCount();
+  int n = SCENE_COUNT + soulCount() + 2;  // + weather radar, aircraft radar
   float weights[16];
   float total = 0;
   int current = currentShowItem();
   for (int i = 0; i < n && i < 16; i++) {
     float w = i < SCENE_COUNT ? 1.0f : settings.spooky == 0 ? 0.3f : settings.spooky == 1 ? 0.7f : 1.2f;
     if (settings.soulsOnly || hunt.active) w = i < SCENE_COUNT ? 0.0f : 1.0f;  // only the trapped souls
+    if (i >= SCENE_COUNT + (int)soulCount()) w = settings.radarInShow && netOnline() && !hunt.active ? 0.5f : 0.0f;
     if (i >= SCENE_COUNT && (pet.hungry() || pet.bored() || pet.tired())) w *= 0.3f;
     for (int8_t r : showRecent) {
       if (r == i) w *= 0.1f;
@@ -853,6 +928,13 @@ static void applyShowItem(int item) {
   showRecent[2] = showRecent[1];
   showRecent[1] = showRecent[0];
   showRecent[0] = item;
+  if (item >= SCENE_COUNT + (int)soulCount()) {
+    radarMode = item == SCENE_COUNT + (int)soulCount() ? RADAR_WEATHER : RADAR_PLANES;
+    lastRadarFrame = 0;
+    showUntil = millis() + showDuration(item);
+    return;
+  }
+  radarMode = RADAR_OFF;
   if (item < SCENE_COUNT) {
     bool fromSouls = settings.mode == MODE_SOULS;
     settings.mode = MODE_GHOST;
@@ -872,6 +954,7 @@ static void applyShowItem(int item) {
 
 static void surpriseTick() {
   if (!settings.autoShow || otaBusy() || maze.active() || wisp.active()) {
+    if (radarMode != RADAR_OFF && !settings.autoShow) showUntil = 0;
     return;
   }
   uint32_t now = millis();
@@ -889,6 +972,15 @@ static void surpriseTick() {
     return;
   }
   // Do not interrupt a nap or a running action.
+  if (radarMode != RADAR_OFF) {  // radar: switch right away
+    if (radarAutoUntil) {
+      showUntil = now + 5000;
+      return;
+    }
+    showPending = pickShowItem();
+    showSwitchAt = now;
+    return;
+  }
   bool busy = settings.mode == MODE_GHOST ? ghost.busy() || ghost.sleeping() : soulDirector.sleepy();
   if (busy) {
     showUntil = now + 5000;
@@ -919,6 +1011,54 @@ static void mazeRecordWin(bool allDone) {
     updateLook();
   }
   markPetDirty();
+}
+
+// Weather / aircraft radar instead of the animation.
+static bool radarLoop() {
+  uint32_t now = millis();
+  // Keep the weather fresh in the background for the rain alert.
+  if (settings.rainAlert || (settings.radarInShow && settings.autoShow)) radarNetDemand(true, false);
+  static uint32_t lastRainCheck;
+  if (settings.rainAlert && radarMode == RADAR_OFF && !maze.active() && !wisp.active() && qrStage == QR_NONE &&
+      now - lastRainCheck > 30000 && (!radarAlertAt || now - radarAlertAt > 30 * 60000UL)) {
+    lastRainCheck = now;
+    RainInfo info;
+    if (radarRainSoon(info) && (info.atHome || (info.level >= 2 && info.distanceKm < 15))) {
+      radarAlertAt = now;
+      setRadar(RADAR_WEATHER);
+      radarAutoUntil = now + 30000;  // shows itself for 30 s, then back to the soul
+    }
+  }
+  if (radarAutoUntil && (int32_t)(now - radarAutoUntil) >= 0) {
+    setRadar(RADAR_OFF);
+  }
+  if (radarMode == RADAR_OFF) {
+    return false;
+  }
+  if (now - lastRadarFrame < 40) {
+    delay(1);
+    return true;
+  }
+  lastRadarFrame = now;
+  lastInteraction = radarAutoUntil ? lastInteraction : now;
+  radarNetDemand(radarMode == RADAR_WEATHER, radarMode == RADAR_PLANES);
+  if (!settings.displayOn) {
+    return true;
+  }
+  Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
+  GeoView view = homeView();
+  float t = now / 1000.0f;
+  if (radarMode == RADAR_WEATHER) {
+    static WeatherFrame frames[RADAR_FRAMES];
+    int n = radarWeatherFrames(frames);
+    radarScreens.drawWeather(canvas, view, frames, n, settings.homeName.c_str(), radarStatus(true), t);
+  } else {
+    static Plane list[RADAR_MAX_PLANES];
+    int n = radarPlanes(list, RADAR_MAX_PLANES);
+    radarScreens.drawPlanes(canvas, view, list, n, settings.homeName.c_str(), radarStatus(false), t);
+  }
+  displayPushNative();
+  return true;
 }
 
 // Lovec světýlek replaces the animation while it runs.
@@ -1189,6 +1329,8 @@ void setup() {
   imuOk = imuInit(settings.refX, settings.refY, settings.refZ, settings.tiltInvert, settings.motionSensitivity);
   updateLook();
   netInit();
+  radarNetInit();
+  radarNetSetView(homeView());
   if (rescue || settings.wifiPolicy != WIFI_RESCUE_ONLY) {
     netStart(rescue);
   }
@@ -1232,7 +1374,7 @@ void loop() {
     appSleepNow();
   }
 
-  if (wispLoop() || mazeLoop()) {
+  if (wispLoop() || mazeLoop() || radarLoop()) {
     return;
   }
   if (qrLoop()) {

@@ -24,7 +24,7 @@ struct FontData {
   uint8_t lineHeight, ascent;
 };
 
-enum FontId : uint8_t { FONT_SMALL, FONT_BIG };
+enum FontId : uint8_t { FONT_SMALL, FONT_BIG, FONT_TINY };
 enum TextAlign : int8_t { ALIGN_LEFT = -1, ALIGN_CENTER = 0, ALIGN_RIGHT = 1 };
 
 class Canvas {

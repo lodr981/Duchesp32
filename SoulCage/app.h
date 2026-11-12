@@ -19,3 +19,5 @@ void appStatusJson(String &body);  // appends ghost/pet fields to the status JSO
 bool appHuntCommand(const String &cmd, const String &arg, String &message);
 // A seal QR code was scanned: returns the result page for the phone.
 String appHuntScan(const String &code);
+// Radar screens: show = weather | planes | off.
+bool appRadar(const String &show);
