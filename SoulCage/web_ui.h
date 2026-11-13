@@ -89,6 +89,15 @@ nav button.on{color:var(--text);background:rgba(255,122,200,.16)}
 .souls-card{display:none}.souls-only .souls-card{display:block}
 textarea{font:inherit;color:var(--text);background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:12px;padding:10px;width:100%;min-height:54px;margin:4px 0 8px}
 details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
+.temp{font-size:15px;margin:-2px 0 8px}.temp b{font-size:22px;margin-right:6px}
+.plane{display:flex;align-items:center;gap:8px;margin:6px 0}
+.plane a{color:var(--text);text-decoration:none}
+.plane .go{flex:1;display:grid;grid-template-columns:12px 1fr auto;gap:2px 8px;align-items:center;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.06)}
+.plane .go:active{transform:scale(.98)}
+.plane .dot{width:10px;height:10px;border-radius:50%}
+.plane .info{grid-column:2/4;font-size:13px;color:var(--muted)}
+.plane .where{font-size:13px;color:var(--mint);white-space:nowrap}
+.plane .fr{font-size:12px;padding:10px 8px;border-radius:12px;background:rgba(183,155,255,.16);color:var(--lilac)}
 .lean{height:8px;background:rgba(0,0,0,.3);border-radius:4px;position:relative;margin:8px 0}
 .lean div{position:absolute;top:-3px;width:14px;height:14px;border-radius:7px;background:var(--pink);left:calc(50% - 7px);transition:left .3s}
 </style>
@@ -283,6 +292,7 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
 
 <section class="card">
   <div class="head"><h2>🌦️ Radar</h2><span class="muted" id="radarNet"></span></div>
+  <div class="temp" id="radarTemp"></div>
   <div class="muted" id="radarRain" style="margin:-4px 0 8px"></div>
   <div class="grid3">
     <button class="big" data-radar="weather"><span>🌧️</span>Meteoradar</button>
@@ -293,6 +303,10 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   <div class="seg" id="radarRange"><button data-v="25">25 km</button><button data-v="50">50 km</button><button data-v="100">100 km</button></div>
   <div class="row"><label for="radarInShow">Radar v Překvapení</label><input type="checkbox" id="radarInShow"></div>
   <div class="row"><label for="rainAlert">Ukázat radar, když se blíží déšť</label><input type="checkbox" id="rainAlert"></div>
+  <details class="more" id="planesBox"><summary>✈️ Letadla, která teď přívěsek vidí <span id="planesCount"></span></summary>
+    <div id="planesList"><p class="muted">Hledám letadla…</p></div>
+    <p class="muted">Klepni na letadlo a otevře se na živé mapě (globe.adsb.fi) – uvidíš, odkud kam letí. <b>FR24</b> ho najde na Flightradaru podle volacího znaku. Odkazy potřebují v telefonu internet.</p>
+  </details>
   <details class="more"><summary>📍 Místo (střed mapy)</summary>
     <input id="homeName" maxlength="30" placeholder="Název">
     <div class="grid2"><input id="homeLat" inputmode="decimal" placeholder="Šířka 50.617"><input id="homeLon" inputmode="decimal" placeholder="Délka 15.141"></div>
@@ -628,6 +642,8 @@ function render(s) {
   const R = s.radar;
   if (R) {
     $('radarNet').textContent = R.online ? '🌐 online' : '📵 offline';
+    $('radarTemp').innerHTML = R.temp !== undefined ? '🌡️ <b>' + String(Math.round(R.temp * 10) / 10).replace('.', ',') + ' °C</b>' +
+      [R.sky, R.wind !== undefined ? 'vítr ' + R.wind + ' km/h' : ''].filter(x => x).join(' · ') : '';
     $('radarRain').textContent = R.online ? (R.rain ? '🌧️ ' + R.rain : (R.weatherStatus || '')) : 'Přívěsek není na internetu – ulož Wi-Fi v Nastavení.';
     document.querySelectorAll('[data-radar]').forEach(b => b.classList.toggle('active', (b.dataset.radar === 'weather' && R.mode === 1) || (b.dataset.radar === 'planes' && R.mode === 2)));
     document.querySelectorAll('#radarRange button').forEach(b => b.classList.toggle('active', +b.dataset.v === R.range));
@@ -742,6 +758,34 @@ async function refresh() {
   offline = 0;
   render(s);
 }
+
+// Aircraft list (only while it is open: the pendant then keeps fetching aircraft)
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const altColor = m => m < 1000 ? '#ffaa50' : m < 3000 ? '#ffe66e' : m < 8000 ? '#78ff96' : '#82dcff';
+let planesTimer;
+function renderPlanes(j) {
+  const list = j.planes || [];
+  $('planesCount').textContent = list.length ? '(' + list.length + ')' : '';
+  if (!list.length) { $('planesList').innerHTML = '<p class="muted">' + esc(j.status || 'Žádná letadla v okolí') + '</p>'; return; }
+  $('planesList').innerHTML = list.map(p => {
+    const name = p.cs || (p.hex ? p.hex.toUpperCase() : '?');
+    const info = [p.type, (p.alt / 1000).toFixed(1).replace('.', ',') + ' km výšky', Math.round(p.spd) + ' km/h'].filter(x => x).join(' · ');
+    const body = '<span class="dot" style="background:' + altColor(p.alt) + '"></span><b>' + esc(name) + '</b>' +
+      '<span class="where">' + Math.round(p.km) + ' km ' + esc(p.dir) + '</span><span class="info">' + esc(info) + '</span>';
+    const go = p.hex && p.hex[0] !== '~'
+      ? '<a class="go" href="https://globe.adsb.fi/?icao=' + encodeURIComponent(p.hex) + '" target="_blank" rel="noopener">' + body + '</a>'
+      : '<div class="go">' + body + '</div>';
+    const fr = p.cs ? '<a class="fr" href="https://www.flightradar24.com/' + encodeURIComponent(p.cs) + '" target="_blank" rel="noopener">FR24</a>' : '';
+    return '<div class="plane">' + go + fr + '</div>';
+  }).join('');
+}
+async function loadPlanes() {
+  clearTimeout(planesTimer);
+  if (!$('planesBox').open) return;
+  try { renderPlanes(await api('/api/planes')); } catch (e) {}
+  planesTimer = setTimeout(loadPlanes, 6000);
+}
+$('planesBox').addEventListener('toggle', loadPlanes);
 
 function gameCmd(params) { return api('/api/game', params).then(j => { toast(j.message); refresh(); }).catch(e => toast(e.message)); }
 function saveSettings(params) { return api('/api/settings', params).catch(e => toast(e.message)); }

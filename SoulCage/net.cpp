@@ -1,4 +1,5 @@
 #include "net.h"
+#include "radarnet.h"
 #include "animations.h"
 #include "app.h"
 #include "config.h"
@@ -484,6 +485,17 @@ static void handleRadar() {
   appRadar(server.arg("show")) ? sendOk() : sendError(400, "Neznámý radar");
 }
 
+static void handlePlanes() {
+  if (!authorized()) {
+    return;
+  }
+  radarNetDemand(false, true);  // the list is open in the app: keep aircraft fresh
+  String body;
+  radarPlanesJson(body);
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", body);
+}
+
 static void handleCalibrate() {
   if (!authorized()) {
     return;
@@ -543,6 +555,7 @@ static void setupRoutes() {
   server.on("/api/game", HTTP_POST, handleGame);
   server.on("/api/hunt", HTTP_POST, handleHunt);
   server.on("/api/radar", HTTP_POST, handleRadar);
+  server.on("/api/planes", HTTP_GET, handlePlanes);
   server.on("/s", HTTP_GET, handleScan);
   server.on("/hunt/print", HTTP_GET, handlePrint);
   server.on("/api/reboot", HTTP_POST, handleReboot);

@@ -23,8 +23,19 @@ struct GeoView {
 struct Plane {
   float lat, lon, track, altM, speedKmh;
   char callsign[10];
+  char hex[8];   // ICAO address ("4b1805"), for links in the app
+  char type[6];  // aircraft type ("A320"), may be empty
   bool hasTrack;
 };
+
+// Current weather at home (Open-Meteo).
+struct CurrentWeather {
+  bool valid = false;
+  float tempC = 0;
+  int code = -1;       // WMO weather code
+  float windKmh = 0;
+};
+const char *weatherCodeName(int code);  // "jasno", "polojasno", "déšť"...
 
 // One decoded radar picture, RADAR_PX x RADAR_PX covering the display (RGB565, 0 = no rain).
 struct WeatherFrame {
@@ -49,9 +60,9 @@ class RadarScreens {
  public:
   // status: shown when there is nothing to draw ("Připojuji…", "Bez internetu"...)
   void drawWeather(Canvas &c, const GeoView &view, const WeatherFrame *frames, int count, const char *homeName,
-                   const char *status, float t);
+                   const char *status, const CurrentWeather &now, float t);
   void drawPlanes(Canvas &c, const GeoView &view, const Plane *planes, int count, const char *homeName,
-                  const char *status, float t);
+                  const char *status, const CurrentWeather &now, float t);
 
  private:
   int shown = 0;      // animation frame

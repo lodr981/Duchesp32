@@ -54,17 +54,21 @@ int main(int argc, char **argv) {
     snprintf(wf[f].time, sizeof(wf[f].time), "14:%02d", 10 + f * 5);
   }
   Plane planes[] = {
-      {50.70f, 15.30f, 250, 10900, 840, "CSA4JK", true}, {50.55f, 14.90f, 75, 3100, 420, "OKHLD", true},
-      {50.80f, 14.95f, 130, 11800, 870, "RYR8PL", true}, {50.45f, 15.40f, 310, 7200, 700, "WZZ1HU", true},
-      {50.64f, 15.18f, 0, 600, 150, "OK-TUR", false},     {50.95f, 15.60f, 200, 9800, 820, "DLH6TA", true},
+      {50.70f, 15.30f, 250, 10900, 840, "CSA4JK", "", "", true}, {50.55f, 14.90f, 75, 3100, 420, "OKHLD", "", "", true},
+      {50.80f, 14.95f, 130, 11800, 870, "RYR8PL", "", "", true}, {50.45f, 15.40f, 310, 7200, 700, "WZZ1HU", "", "", true},
+      {50.64f, 15.18f, 0, 600, 150, "OK-TUR", "", "", false},     {50.95f, 15.60f, 200, 9800, 820, "DLH6TA", "", "", true},
   };
+  CurrentWeather now;
+  now.valid = true;
+  now.tempC = 7.4f;
+  now.code = 2;
   std::vector<uint16_t> buf(240 * 240);
   Canvas canvas(buf.data(), 240, 240);
   RadarScreens screens;
   int n = 0;
   for (int i = 0; i < 160; i++) {
     float t = i * 0.05f;
-    screens.drawWeather(canvas, view, wf, RADAR_FRAMES, "Jenišovice", "", t);
+    screens.drawWeather(canvas, view, wf, RADAR_FRAMES, "Jenišovice", "", now, t);
     char name[64];
     snprintf(name, sizeof(name), "/w%04d.ppm", n++);
     writePpm(out + name, buf.data());
@@ -75,14 +79,14 @@ int main(int argc, char **argv) {
       p.lat += cosf(p.track * 0.0174533f) * p.speedKmh / 3600 * 0.05f * 4 / 111.32f;
       p.lon += sinf(p.track * 0.0174533f) * p.speedKmh / 3600 * 0.05f * 4 / (111.32f * 0.635f);
     }
-    screens.drawPlanes(canvas, view, planes, 6, "Jenišovice", "", t);
+    screens.drawPlanes(canvas, view, planes, 6, "Jenišovice", "", now, t);
     char name[64];
     snprintf(name, sizeof(name), "/p%04d.ppm", i);
     writePpm(out + name, buf.data());
   }
   WeatherFrame none[1];
   (void)none;
-  screens.drawWeather(canvas, view, nullptr, 0, "Jenišovice", "Bez internetu", 0);
+  screens.drawWeather(canvas, view, nullptr, 0, "Jenišovice", "Bez internetu", now, 0);
   writePpm(out + "/nonet.ppm", buf.data());
   printf("ok\n");
   return 0;

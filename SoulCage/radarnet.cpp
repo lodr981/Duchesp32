@@ -373,6 +373,18 @@ static void fetchWeather() {
 
 // ------------------------------------------------------------------ ADS-B
 
+// Copies an identifier keeping only safe characters (it ends up in JSON and URLs).
+static void copyId(char *out, size_t cap, const char *in) {
+  size_t n = 0;
+  for (; *in && n + 1 < cap; in++) {
+    char ch = *in;
+    if ((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '~' || ch == '-') {
+      out[n++] = ch;
+    }
+  }
+  out[n] = 0;
+}
+
 static bool fetchPlanesFrom(const char *url) {
   NetworkClientSecure client;
   HTTPClient http;
@@ -395,6 +407,8 @@ static bool fetchPlanesFrom(const char *url) {
     f["track"] = true;
     f["alt_baro"] = true;
     f["gs"] = true;
+    f["hex"] = true;
+    f["t"] = true;
   }
   JsonDocument doc;
   if (deserializeJson(doc, jsonBody, len, DeserializationOption::Filter(filter))) return false;
@@ -419,6 +433,8 @@ static bool fetchPlanesFrom(const char *url) {
     strncpy(p.callsign, cs, sizeof(p.callsign) - 1);
     p.callsign[sizeof(p.callsign) - 1] = 0;
     for (int i = strlen(p.callsign) - 1; i >= 0 && p.callsign[i] == ' '; i--) p.callsign[i] = 0;
+    copyId(p.hex, sizeof(p.hex), a["hex"] | "");
+    copyId(p.type, sizeof(p.type), a["t"] | "");
     n++;
   }
   xSemaphoreTake(lock, portMAX_DELAY);
@@ -445,6 +461,53 @@ static void fetchPlanes() {
   planesStatus = ok ? "Žádná letadla v okolí" : "Data letadel nedostupná";
 }
 
+// ------------------------------------------------------------------ Open-Meteo
+
+static CurrentWeather current;
+static uint32_t currentFetchedAt, currentTriedAt;
+static volatile uint32_t tempWantedAt;
+static volatile bool tempStale;  // home moved
+#define CURRENT_PERIOD_MS (10 * 60 * 1000UL)
+#define CURRENT_RETRY_MS (60 * 1000UL)
+
+static void fetchCurrent() {
+  GeoView v;
+  xSemaphoreTake(lock, portMAX_DELAY);
+  v = view;
+  xSemaphoreGive(lock);
+  char url[200];
+  snprintf(url, sizeof(url),
+           "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+           "&current=temperature_2m,weather_code,wind_speed_10m",
+           v.lat, v.lon);
+  currentTriedAt = millis();
+  tempStale = false;
+  NetworkClientSecure client;
+  HTTPClient http;
+  bool insecure;
+  if (httpGet(http, client, url, insecure) != 200) {
+    http.end();
+    return;
+  }
+  long len = readBody(http, (uint8_t *)jsonBody, JSON_CAP - 1);
+  http.end();
+  if (len < 2) return;
+  jsonBody[len] = 0;
+  JsonDocument doc;
+  if (deserializeJson(doc, jsonBody, len)) return;
+  JsonObjectConst cur = doc["current"].as<JsonObjectConst>();
+  if (!cur["temperature_2m"].is<float>()) return;
+  CurrentWeather w;
+  w.valid = true;
+  w.tempC = cur["temperature_2m"];
+  w.code = cur["weather_code"] | -1;
+  w.windKmh = cur["wind_speed_10m"] | 0.0f;
+  xSemaphoreTake(lock, portMAX_DELAY);
+  current = w;
+  xSemaphoreGive(lock);
+  currentFetchedAt = millis();
+}
+
 // ------------------------------------------------------------------ task
 
 static void radarTask(void *) {
@@ -453,10 +516,15 @@ static void radarTask(void *) {
     uint32_t now = millis();
     bool wantWeather = weatherWantedAt && now - weatherWantedAt < WEATHER_KEEP_MS;
     bool wantPlanes = planesWantedAt && now - planesWantedAt < DEMAND_KEEP_MS;
-    if (!wantWeather && !wantPlanes) continue;
+    bool wantTemp = tempWantedAt && now - tempWantedAt < WEATHER_KEEP_MS;
+    if (!wantWeather && !wantPlanes && !wantTemp) continue;
     if (!netOnline()) {
       weatherStatus = planesStatus = "Bez internetu – v aplikaci ulož Wi-Fi";
       continue;
+    }
+    if (wantTemp && (!currentFetchedAt || tempStale || now - currentFetchedAt > CURRENT_PERIOD_MS) &&
+        (!currentTriedAt || tempStale || now - currentTriedAt > CURRENT_RETRY_MS)) {
+      fetchCurrent();
     }
     if (wantPlanes && (!planesFetchedAt || now - planesFetchedAt > PLANES_PERIOD_MS)) {
       fetchPlanes();
@@ -485,6 +553,7 @@ void radarNetInit() {
 
 void radarNetDemand(bool weather, bool planes) {
   uint32_t now = millis();
+  if (weather || planes) tempWantedAt = now ? now : 1;
   if (weather) weatherWantedAt = now ? now : 1;
   if (planes) planesWantedAt = now ? now : 1;
 }
@@ -496,6 +565,7 @@ void radarNetSetView(const GeoView &v) {
   xSemaphoreGive(lock);
   if (moved) {
     viewChanged = true;
+    tempStale = true;
     planesFetchedAt = 0;
   }
 }
@@ -518,6 +588,58 @@ int radarPlanes(Plane *out, int max) {
   memcpy(out, planes, sizeof(Plane) * n);
   xSemaphoreGive(lock);
   return n;
+}
+
+void radarNetDemandTemperature() {
+  uint32_t now = millis();
+  tempWantedAt = now ? now : 1;
+}
+
+bool radarCurrent(CurrentWeather &out) {
+  xSemaphoreTake(lock, portMAX_DELAY);
+  out = current;
+  xSemaphoreGive(lock);
+  // older than an hour: better nothing than a stale number
+  if (out.valid && millis() - currentFetchedAt > 60 * 60 * 1000UL) out.valid = false;
+  return out.valid;
+}
+
+void radarPlanesJson(String &out) {
+  static Plane list[RADAR_MAX_PLANES];
+  GeoView v;
+  xSemaphoreTake(lock, portMAX_DELAY);
+  v = view;
+  int n = planeCount;
+  memcpy(list, planes, sizeof(Plane) * n);
+  xSemaphoreGive(lock);
+  float km[RADAR_MAX_PLANES];
+  int order[RADAR_MAX_PLANES], m = 0;
+  for (int i = 0; i < n; i++) {
+    float dx = (list[i].lon - v.lon) * 111.32f * cosf(v.lat * 0.017453293f), dy = (list[i].lat - v.lat) * 111.32f;
+    km[i] = sqrtf(dx * dx + dy * dy);
+    if (km[i] <= v.rangeKm) order[m++] = i;  // only what fits on the pendant
+  }
+  for (int i = 1; i < m; i++) {
+    for (int j = i; j > 0 && km[order[j]] < km[order[j - 1]]; j--) {
+      int t = order[j];
+      order[j] = order[j - 1];
+      order[j - 1] = t;
+    }
+  }
+  out = "{\"status\":\"";
+  out += planesFetchedAt ? planesStatus : "Hledám letadla…";
+  out += "\",\"planes\":[";
+  char buf[200];
+  for (int k = 0; k < m; k++) {
+    const Plane &p = list[order[k]];
+    float dx = (p.lon - v.lon) * 111.32f * cosf(v.lat * 0.017453293f), dy = (p.lat - v.lat) * 111.32f;
+    float bearing = fmodf(atan2f(dx, dy) * 57.29578f + 360, 360);
+    snprintf(buf, sizeof(buf),
+             "%s{\"hex\":\"%s\",\"cs\":\"%s\",\"type\":\"%s\",\"alt\":%.0f,\"spd\":%.0f,\"km\":%.1f,\"dir\":\"%s\"}",
+             k ? "," : "", p.hex, p.callsign, p.type, p.altM, p.speedKmh, km[order[k]], bearingName(bearing));
+    out += buf;
+  }
+  out += "]}";
 }
 
 const char *radarStatus(bool weather) {

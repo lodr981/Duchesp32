@@ -24,6 +24,14 @@ od Vishala Soniho (MIT), rozšířený o:
 
 Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 16 MB flash), Li-Po baterie, vypínač.
 
+## Novinky 1.8 – Teplota a letadla v aplikaci 🌡️
+
+- **Aktuální teplota** u vás (Open-Meteo, `api.open-meteo.com`, bez klíče, každých 10 minut): na meteoradaru
+  nahoře „7 °C polojasno“, na radaru letadel dole. V aplikaci v kartě Radar teplota, obloha a vítr.
+- **Letadla v aplikaci**: v kartě Radar rozbal „✈️ Letadla, která teď přívěsek vidí“ – seznam od nejbližšího
+  (volací znak, typ, výška, rychlost, vzdálenost a směr). Klepnutím se letadlo otevře na živé mapě
+  globe.adsb.fi, tlačítko **FR24** ho najde na Flightradar24.
+
 ## Novinky 1.7 – Meteoradar a radar letadel 🌦️✈️
 
 Podle projektu [MeteoPlaneRadar](https://github.com/petus/MeteoPlaneRadar) (chiptron.cz, MIT), překresleno

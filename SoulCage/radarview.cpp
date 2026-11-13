@@ -127,8 +127,47 @@ static void plate(Canvas &c, float y, float w, float h) {
 
 // ------------------------------------------------------------------ weather
 
+const char *weatherCodeName(int code) {
+  if (code < 0) return "";
+  if (code == 0) return "jasno";
+  if (code == 1) return "skoro jasno";
+  if (code == 2) return "polojasno";
+  if (code == 3) return "zataženo";
+  if (code == 45 || code == 48) return "mlha";
+  if (code >= 51 && code <= 57) return "mrholí";
+  if (code == 66 || code == 67) return "mrznoucí déšť";
+  if (code >= 61 && code <= 65) return code == 65 ? "silný déšť" : "déšť";
+  if (code >= 71 && code <= 77) return "sněží";
+  if (code >= 80 && code <= 82) return "přeháňky";
+  if (code == 85 || code == 86) return "sněhové přeháňky";
+  if (code >= 95) return "bouřka";
+  return "";
+}
+
+static Color tempColor(float c) {
+  if (c <= 0) return {140, 200, 255};
+  if (c < 10) return {190, 225, 255};
+  if (c < 20) return {200, 255, 210};
+  if (c < 28) return {255, 225, 130};
+  return {255, 160, 110};
+}
+
+// "7 °C" with the sky condition next to it, on a plate under the top line.
+static void drawTemperature(Canvas &c, const CurrentWeather &now, float y) {
+  if (!now.valid) return;
+  char temp[16];
+  snprintf(temp, sizeof(temp), "%d °C", (int)lroundf(now.tempC));
+  const char *sky = weatherCodeName(now.code);
+  int tw = Canvas::textWidth(temp, FONT_SMALL), sw = *sky ? Canvas::textWidth(sky, FONT_TINY) + 6 : 0;
+  float w = tw + sw + 20.0f;
+  c.roundRect(120 - w / 2, y, w, 22, 11, {6, 6, 12}, 210);
+  float x = 120 - (tw + sw) / 2.0f;
+  c.text(temp, x, y + 2, FONT_SMALL, tempColor(now.tempC), 255, ALIGN_LEFT);
+  if (*sky) c.text(sky, x + tw + 6, y + 6, FONT_TINY, {200, 205, 230}, 230, ALIGN_LEFT);
+}
+
 void RadarScreens::drawWeather(Canvas &c, const GeoView &view, const WeatherFrame *frames, int count,
-                               const char *homeName, const char *status, float t) {
+                               const char *homeName, const char *status, const CurrentWeather &now, float t) {
   float dt = lastT ? clampf(t - lastT, 0, 0.5f) : 0;
   lastT = t;
   c.gradient({12, 16, 28}, {4, 6, 12});
@@ -163,6 +202,7 @@ void RadarScreens::drawWeather(Canvas &c, const GeoView &view, const WeatherFram
     plate(c, 150, 170, 28);
     c.text(status && *status ? status : "Načítám radar…", 120, 155, FONT_SMALL, {230, 220, 255});
     c.text("Meteoradar", 120, 6, FONT_SMALL, {255, 255, 255});
+    drawTemperature(c, now, 28);
     return;
   }
   const WeatherFrame &f = frames[shown];
@@ -172,6 +212,7 @@ void RadarScreens::drawWeather(Canvas &c, const GeoView &view, const WeatherFram
     snprintf(buf, sizeof(buf), "%s  teď", f.time);
   }
   c.text(buf, 120, 6, FONT_SMALL, {255, 255, 255});
+  drawTemperature(c, now, 28);
 
   // Rain summary from the newest frame (computed once per new frame).
   static const uint16_t *cachedFor = nullptr;
@@ -237,8 +278,15 @@ static void drawPlaneIcon(Canvas &c, float x, float y, float trackDeg, bool hasT
   c.triangle(cx2, cy2, dx, dy, wx, wy, col, a);  // tail
 }
 
+static void drawPlanesTemp(Canvas &c, const CurrentWeather &now) {
+  if (!now.valid) return;
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%d °C", (int)lroundf(now.tempC));
+  c.text(buf, 120, 216, FONT_TINY, tempColor(now.tempC), 230);
+}
+
 void RadarScreens::drawPlanes(Canvas &c, const GeoView &view, const Plane *planes, int count, const char *homeName,
-                              const char *status, float t) {
+                              const char *status, const CurrentWeather &now, float t) {
   c.fill({2, 10, 6});
   c.glow(120, 120, 135, 135, {12, 70, 34}, 130);
   drawMap(c, view, {40, 120, 70}, 150, {90, 170, 110}, 190, nullptr);
@@ -267,6 +315,7 @@ void RadarScreens::drawPlanes(Canvas &c, const GeoView &view, const Plane *plane
     plate(c, 150, 190, 28);
     c.text(status && *status ? status : "Žádná letadla v okolí", 120, 155, FONT_SMALL, {200, 255, 210});
     c.text("Letadla", 120, 22, FONT_SMALL, {200, 255, 210});
+    drawPlanesTemp(c, now);
     return;
   }
 
@@ -336,4 +385,5 @@ void RadarScreens::drawPlanes(Canvas &c, const GeoView &view, const Plane *plane
            bearingName(bearing));
   plate(c, 196, Canvas::textWidth(buf, FONT_TINY) + 18.0f, 18);
   c.text(buf, 120, 198, FONT_TINY, {230, 255, 235});
+  drawPlanesTemp(c, now);
 }

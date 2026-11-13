@@ -618,7 +618,14 @@ void appStatusJson(String &body) {
             ",\"range\":" + String(settings.radarRange) + ",\"inShow\":" + String(settings.radarInShow ? "true" : "false") +
             ",\"rainAlert\":" + String(settings.rainAlert ? "true" : "false") +
             ",\"online\":" + String(netOnline() ? "true" : "false") + ",\"rain\":" + jsonText(rain.c_str()) +
-            ",\"weatherStatus\":" + jsonText(radarStatus(true)) + "}";
+            ",\"weatherStatus\":" + jsonText(radarStatus(true));
+    CurrentWeather cw;
+    radarNetDemandTemperature();  // the app is open: keep the temperature fresh
+    if (radarCurrent(cw)) {
+      body += ",\"temp\":" + String(cw.tempC, 1) + ",\"sky\":" + jsonText(weatherCodeName(cw.code)) +
+              ",\"wind\":" + String(cw.windKmh, 0);
+    }
+    body += "}";
   }
   body += ",\"lights\":{\"active\":" + String(wisp.active() ? "true" : "false") + ",\"best\":" + String(settings.wispBest) +
           ",\"jar\":" + String(settings.jarLights) + "}";
@@ -1050,11 +1057,15 @@ static bool radarLoop() {
   if (radarMode == RADAR_WEATHER) {
     static WeatherFrame frames[RADAR_FRAMES];
     int n = radarWeatherFrames(frames);
-    radarScreens.drawWeather(canvas, view, frames, n, settings.homeName.c_str(), radarStatus(true), t);
+    CurrentWeather cw;
+    radarCurrent(cw);
+    radarScreens.drawWeather(canvas, view, frames, n, settings.homeName.c_str(), radarStatus(true), cw, t);
   } else {
     static Plane list[RADAR_MAX_PLANES];
     int n = radarPlanes(list, RADAR_MAX_PLANES);
-    radarScreens.drawPlanes(canvas, view, list, n, settings.homeName.c_str(), radarStatus(false), t);
+    CurrentWeather cw;
+    radarCurrent(cw);
+    radarScreens.drawPlanes(canvas, view, list, n, settings.homeName.c_str(), radarStatus(false), cw, t);
   }
   displayPushNative();
   return true;
