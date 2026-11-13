@@ -1159,10 +1159,14 @@ static bool radarLoop() {
       idle = false;
     }
   }
+  // The checks below copy shared data under a lock: once a second is plenty.
+  static uint32_t alertCheckAt;
+  bool checkAlerts = now - alertCheckAt > 1000;
+  if (checkAlerts) alertCheckAt = now;
   // "Right above you!" when an aircraft flies over home.
   static uint32_t seenOverhead, planeAlertAt;
   OverheadAlert oa;
-  uint32_t seq = radarOverhead(oa);
+  uint32_t seq = checkAlerts ? radarOverhead(oa) : seenOverhead;
   if (seq != seenOverhead) {
     seenOverhead = seq;
     if (settings.planeAlert && idle && daytime && (!planeAlertAt || now - planeAlertAt > 10 * 60000UL)) {
@@ -1176,7 +1180,7 @@ static bool radarLoop() {
   // ISS: from a few minutes before a visible pass until it is over.
   static time_t issAlertedPass;
   IssInfo iss;
-  if (settings.issAlert && idle && clock && lt.tm_hour >= 5 && lt.tm_hour < 23 && radarIss(iss) && iss.hasPass &&
+  if (checkAlerts && settings.issAlert && idle && clock && lt.tm_hour >= 5 && lt.tm_hour < 23 && radarIss(iss) && iss.hasPass &&
       iss.minutesTo <= 4 && (iss.minutesTo >= 0 || iss.inPass)) {
     time_t passKey = nowT / 60 + iss.minutesTo;  // the pass start minute
     if (passKey > issAlertedPass + 5) {

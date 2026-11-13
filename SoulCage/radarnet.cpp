@@ -9,6 +9,7 @@
 #include <new>
 #include <time.h>
 #include <WiFi.h>
+#include <esp_system.h>
 #include "certs.h"
 #include "net.h"
 #include "isspass.h"
@@ -44,7 +45,7 @@ static char frameName[RADAR_FRAMES][48];
 static char frameTime[RADAR_FRAMES][6];
 static uint8_t *pngRaw[RADAR_FRAMES];  // downloaded files, kept for re-decoding
 static size_t pngSize[RADAR_FRAMES];
-static uint32_t weatherFetchedAt;
+static uint32_t weatherFetchedAt, weatherTriedAt;
 static const char *weatherStatus = "Načítám radar…";
 
 static Plane planes[RADAR_MAX_PLANES];
@@ -700,6 +701,9 @@ static IssInfo iss;
 static time_t passStart, passEnd;
 static const char *issStatus = "Počítám dráhu ISS…";
 
+static char tleText[400];
+static volatile bool tleNew;
+
 static bool fetchTle() {
   tleTriedAt = millis();
   NetworkClientSecure client;
@@ -713,12 +717,13 @@ static bool fetchTle() {
   http.end();
   if (len < 100) return false;
   jsonBody[len] = 0;
-  if (!issLoadTle(*sat, jsonBody)) {
+  if (!strstr(jsonBody, "1 25544") || !strstr(jsonBody, "2 25544")) {
     diagFail(TLE_URL, "v odpovědi není dráha ISS");
     return false;
   }
   diagOk(TLE_URL);
-  tleOk = true;
+  snprintf(tleText, sizeof(tleText), "%s", jsonBody);
+  tleNew = true;  // the ISS task loads it
   tleFetchedAt = millis();
   return true;
 }
@@ -754,26 +759,44 @@ static void updateIssLive(time_t now) {
   issLiveAt = millis();
 }
 
-static void issTick(bool wanted) {
-  if (!sat) return;
-  time_t now = time(nullptr);
-  if (now < 1700000000) {
-    issStatus = "Čekám na přesný čas…";
-    return;
-  }
+// Network side: keep the orbit fresh (twice a day).
+static bool tleDue() {
   uint32_t ms = millis();
-  if (!tleOk || ms - tleFetchedAt > 12 * 3600000UL) {
-    if (!tleTriedAt || ms - tleTriedAt > (tleOk ? 30 * 60000UL : 2 * 60000UL)) {
-      if (!fetchTle() && !tleOk) issStatus = "Dráha ISS nedostupná";
+  bool stale = !tleFetchedAt || ms - tleFetchedAt > 12 * 3600000UL;
+  return stale && (!tleTriedAt || ms - tleTriedAt > (tleFetchedAt ? 30 * 60000UL : 2 * 60000UL));
+}
+
+// Compute side, in its own task: SGP4 is heavy on doubles and must never hold up downloads.
+static void issTask(void *) {
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    uint32_t ms = millis();
+    bool wanted = issWantedAt && ms - issWantedAt < DEMAND_KEEP_MS;
+    if (!wanted && !issAlertOn) continue;
+    if (tleNew) {
+      tleNew = false;
+      if (issLoadTle(*sat, tleText)) {
+        tleOk = true;
+        issStale = true;
+      } else {
+        issStatus = "Dráha ISS se nedá přečíst";
+      }
     }
+    time_t now = time(nullptr);
+    if (now < 1700000000) {
+      issStatus = "Čekám na přesný čas…";
+      continue;
+    }
+    if (!tleOk) {
+      if (tleTriedAt && !tleFetchedAt) issStatus = "Dráha ISS nedostupná";
+      continue;
+    }
+    if (!issComputedAt || issStale || ms - issComputedAt > 15 * 60000UL || (iss.hasPass && now > passEnd)) {
+      computePasses(now);
+    }
+    bool soon = iss.hasPass && now >= passStart - 600 && now <= passEnd + 60;
+    if (wanted || soon || millis() - issLiveAt > 60000) updateIssLive(now);
   }
-  if (!tleOk) return;
-  if (!issComputedAt || issStale || ms - issComputedAt > 15 * 60000UL || (iss.hasPass && now > passEnd)) {
-    computePasses(now);
-  }
-  bool soon = iss.hasPass && now >= passStart - 600 && now <= passEnd + 60;
-  if ((wanted || soon) && ms - issLiveAt > 900) updateIssLive(now);
-  else if (ms - issLiveAt > 60000) updateIssLive(now);
 }
 
 // ------------------------------------------------------------------ Open-Meteo
@@ -851,10 +874,30 @@ static void fetchCurrent() {
 
 // ------------------------------------------------------------------ task
 
+// What the download task is doing right now (diagnostics).
+static volatile const char *step = "start";
+static volatile uint32_t stepAt, loopAt;
+static TaskHandle_t netTaskHandle, issTaskHandle;
+
+static void job(const char *what, void (*fn)()) {
+  step = what;
+  stepAt = millis();
+  fn();
+  step = "čekám";
+  stepAt = millis();
+}
+
+static void fetchTleJob() {
+  fetchTle();
+}
+
+// Download task: one request per round, the screen that is shown first, so a slow
+// or failing source can never starve the others.
 static void radarTask(void *) {
   for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(300));
     uint32_t now = millis();
+    loopAt = now ? now : 1;
     bool wantWeather = weatherWantedAt && now - weatherWantedAt < WEATHER_KEEP_MS;
     bool wantPlanes = planesWantedAt && now - planesWantedAt < DEMAND_KEEP_MS;
     bool wantTemp = tempWantedAt && now - tempWantedAt < WEATHER_KEEP_MS;
@@ -863,25 +906,28 @@ static void radarTask(void *) {
     if (!netOnline()) {
       weatherStatus = planesStatus = "Bez internetu – v aplikaci ulož Wi-Fi";
       issStatus = "Bez internetu";
+      step = "bez internetu";
       continue;
-    }
-    if (wantIss || issAlertOn) issTick(wantIss);
-    if (wantTemp && (!currentFetchedAt || tempStale || now - currentFetchedAt > CURRENT_PERIOD_MS) &&
-        (!currentTriedAt || tempStale || now - currentTriedAt > CURRENT_RETRY_MS)) {
-      fetchCurrent();
     }
     time_t clock = time(nullptr);
     struct tm lt;
     localtime_r(&clock, &lt);
     bool daytime = clock < 1700000000 || (lt.tm_hour >= 7 && lt.tm_hour < 21);  // alerts are shown 7-21 h
     if (wantPlanes && (!planesFetchedAt || now - planesFetchedAt > PLANES_PERIOD_MS)) {
-      fetchPlanes();
-    } else if (!wantPlanes && planeAlertOn && daytime && (!overheadFetchedAt || now - overheadFetchedAt > OVERHEAD_PERIOD_MS)) {
-      pollOverhead();
-    }
-    if (wantWeather && (viewChanged || !weatherFetchedAt || millis() - weatherFetchedAt > WEATHER_PERIOD_MS)) {
+      job("stahuji letadla", fetchPlanes);
+    } else if (wantWeather && (viewChanged || !weatherFetchedAt || now - weatherFetchedAt > WEATHER_PERIOD_MS) &&
+               (!weatherTriedAt || now - weatherTriedAt > 30000)) {
+      weatherTriedAt = now;  // a failing ČHMÚ is retried every 30 s, not in a tight loop
       if (!frameCount) weatherStatus = "Stahuji radar ČHMÚ…";
-      fetchWeather();
+      job("stahuji radar ČHMÚ", fetchWeather);
+    } else if (wantTemp && (!currentFetchedAt || tempStale || now - currentFetchedAt > CURRENT_PERIOD_MS) &&
+               (!currentTriedAt || tempStale || now - currentTriedAt > CURRENT_RETRY_MS)) {
+      job("stahuji teplotu", fetchCurrent);
+    } else if (!wantPlanes && planeAlertOn && daytime &&
+               (!overheadFetchedAt || now - overheadFetchedAt > OVERHEAD_PERIOD_MS)) {
+      job("hlídám letadla nad námi", pollOverhead);
+    } else if ((wantIss || issAlertOn) && tleDue()) {
+      job("stahuji dráhu ISS", fetchTleJob);
     }
   }
 }
@@ -899,7 +945,8 @@ void radarNetInit() {
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
   tzset();
   sat = new Sgp4();
-  xTaskCreatePinnedToCore(radarTask, "radar", 16384, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(radarTask, "radar", 20480, nullptr, 1, &netTaskHandle, 0);
+  xTaskCreatePinnedToCore(issTask, "iss", 16384, nullptr, 0, &issTaskHandle, 1);
 }
 
 void radarNetDemand(bool weather, bool planes) {
@@ -1029,7 +1076,15 @@ bool radarIss(IssInfo &out) {
 
 void radarNetDiagJson(String &out) {
   uint32_t now = millis();
-  out = "[";
+  char head[300];
+  snprintf(head, sizeof(head),
+           "{\"step\":\"%s\",\"stepFor\":%lu,\"loopAgo\":%ld,\"stackNet\":%u,\"stackIss\":%u,\"uptime\":%lu,"
+           "\"reset\":%d,\"sources\":[",
+           (const char *)step, (unsigned long)((now - stepAt) / 1000), loopAt ? (long)((now - loopAt) / 1000) : -1L,
+           netTaskHandle ? (unsigned)uxTaskGetStackHighWaterMark(netTaskHandle) : 0,
+           issTaskHandle ? (unsigned)uxTaskGetStackHighWaterMark(issTaskHandle) : 0, (unsigned long)(now / 1000),
+           (int)esp_reset_reason());
+  out = head;
   bool first = true;
   for (const SourceDiag &d : diag) {
     if (!d.at) continue;
@@ -1045,13 +1100,13 @@ void radarNetDiagJson(String &out) {
     out += "\"}";
     first = false;
   }
-  out += "]";
+  out += "]}";
 }
 
 void radarNetRetry() {
   uint32_t now = millis();
   if (!now) now = 1;
-  weatherFetchedAt = planesFetchedAt = currentFetchedAt = currentTriedAt = 0;
+  weatherFetchedAt = weatherTriedAt = planesFetchedAt = currentFetchedAt = currentTriedAt = overheadFetchedAt = 0;
   tleTriedAt = 0;
   issComputedAt = 0;
   weatherWantedAt = planesWantedAt = tempWantedAt = issWantedAt = now;

@@ -680,11 +680,16 @@ function render(s) {
     ['weatherFx', 'forecastAlert', 'planeAlert', 'issAlert'].forEach(k => { if (R[k] !== undefined) $(k).checked = R[k]; });
     if ($('diagBox').open) {
       const ago = t => t < 0 ? 'nikdy' : t < 60 ? 'před ' + t + ' s' : t < 3600 ? 'před ' + Math.round(t / 60) + ' min' : 'před ' + Math.round(t / 3600) + ' h';
-      const rows = (R.diag || []).map(d => (d.ok ? '✅ ' : '❌ ') + '<b>' + esc(d.name) + '</b> – ' +
+      const D = R.diag || {}, src = D.sources || [];
+      const rows = src.map(d => (d.ok ? '✅ ' : '❌ ') + '<b>' + esc(d.name) + '</b> – ' +
         (d.ok ? 'OK ' + ago(d.okAgo) + ' (' + d.ms + ' ms)' : esc(d.error || ('chyba ' + d.code)) + ', zkoušeno ' + ago(d.ago) +
           (d.okAgo >= 0 ? ', naposledy OK ' + ago(d.okAgo) : '')));
+      const resets = { 1: 'zapnutí', 3: 'restart', 4: 'PÁD programu', 5: 'zaseknutí (watchdog)', 6: 'zaseknutí úlohy (watchdog)', 7: 'watchdog', 8: 'probuzení', 9: 'slabá baterie (brownout)' };
+      rows.unshift('⚙️ Právě: ' + esc(D.step || '?') + ' (' + (D.stepFor || 0) + ' s) · smyčka ' + ago(D.loopAgo) +
+        ' · běží ' + Math.round((D.uptime || 0) / 60) + ' min · poslední start: ' + (resets[D.reset] || D.reset) +
+        ' · zásobník ' + D.stackNet + '/' + D.stackIss + ' B');
       rows.unshift('🌐 Internet: ' + (R.online ? 'připojeno' : 'NE') + ' · DNS ' + esc(R.dns || '?') + ' · čas ' + (R.clock ? 'OK' : 'nenastaven') + ' · volná paměť ' + R.heap + ' kB');
-      if (!(R.diag || []).length) rows.push('Zatím se nic nestahovalo – zapni radar nebo klepni na „Zkusit stáhnout hned“.');
+      if (!src.length) rows.push('Zatím se nic nestahovalo – klepni na „Zkusit stáhnout hned“.');
       $('diagList').innerHTML = rows.join('<br>');
     }
     document.querySelectorAll('#radarRange button').forEach(b => b.classList.toggle('active', +b.dataset.v === R.range));
