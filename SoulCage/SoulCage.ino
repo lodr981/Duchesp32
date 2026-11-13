@@ -13,6 +13,7 @@
 */
 
 #include <time.h>
+#include <WiFi.h>
 #include "animations.h"
 #include "app.h"
 #include "config.h"
@@ -361,6 +362,10 @@ bool appRadar(const String &show) {
   else if (show == "planes") setRadar(RADAR_PLANES);
   else if (show == "forecast") setRadar(RADAR_FORECAST);
   else if (show == "iss") setRadar(RADAR_ISS);
+  else if (show == "retry") {
+    radarNetRetry();
+    return true;
+  }
   else if (show == "off") setRadar(RADAR_OFF);
   else return false;
   if (show != "off" && settings.autoShow) {
@@ -674,6 +679,13 @@ void appStatusJson(String &body) {
       }
     } else {
       body += ",\"iss\":" + jsonText(iss.status);
+    }
+    {
+      String dj;
+      radarNetDiagJson(dj);
+      body += ",\"diag\":" + dj + ",\"dns\":" + jsonText(WiFi.dnsIP(0).toString().c_str()) +
+              ",\"clock\":" + String(time(nullptr) > 1700000000 ? "true" : "false") +
+              ",\"heap\":" + String(ESP.getFreeHeap() / 1024);
     }
     OverheadAlert oa;
     radarOverhead(oa);

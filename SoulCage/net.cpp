@@ -705,6 +705,10 @@ void netLoop() {
   if (clients > 0) {
     lastActivity = millis();  // a phone is connected to the hotspot: stay on
   }
+  if (staConnected && (settings.rainAlert || settings.weatherFx || settings.forecastAlert || settings.planeAlert ||
+                       settings.issAlert)) {
+    lastActivity = millis();  // radar features need the internet: stay on while the home Wi-Fi is there
+  }
   if (staWanted()) {
     bool connected = WiFi.status() == WL_CONNECTED;
     if (connected && !staConnected) {

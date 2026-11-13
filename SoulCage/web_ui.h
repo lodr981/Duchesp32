@@ -316,6 +316,11 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
     <div id="planesList"><p class="muted">Hledám letadla…</p></div>
     <p class="muted">Klepni na letadlo a otevře se na živé mapě (globe.adsb.fi) – uvidíš, odkud kam letí. <b>FR24</b> ho najde na Flightradaru podle volacího znaku. Odkazy potřebují v telefonu internet.</p>
   </details>
+  <details class="more" id="diagBox"><summary>🔧 Stav stahování</summary>
+    <div id="diagList" class="muted" style="line-height:1.6"></div>
+    <button id="diagRetry" style="width:100%;margin-top:8px">🔄 Zkusit stáhnout hned</button>
+    <p class="muted">Když něco nejde, pošli screenshot této části – podle chyby se dá poznat, kde je problém.</p>
+  </details>
   <details class="more"><summary>📍 Místo (střed mapy)</summary>
     <input id="homeName" maxlength="30" placeholder="Název">
     <div class="grid2"><input id="homeLat" inputmode="decimal" placeholder="Šířka 50.617"><input id="homeLon" inputmode="decimal" placeholder="Délka 15.141"></div>
@@ -673,6 +678,15 @@ function render(s) {
     if (R.fx || R.frost) info.push('🫙 Na skle teď: ' + [R.fx, R.frost ? 'mráz' : ''].filter(x => x).join(' + '));
     $('radarInfo').innerHTML = info.map(esc).join('<br>');
     ['weatherFx', 'forecastAlert', 'planeAlert', 'issAlert'].forEach(k => { if (R[k] !== undefined) $(k).checked = R[k]; });
+    if ($('diagBox').open) {
+      const ago = t => t < 0 ? 'nikdy' : t < 60 ? 'před ' + t + ' s' : t < 3600 ? 'před ' + Math.round(t / 60) + ' min' : 'před ' + Math.round(t / 3600) + ' h';
+      const rows = (R.diag || []).map(d => (d.ok ? '✅ ' : '❌ ') + '<b>' + esc(d.name) + '</b> – ' +
+        (d.ok ? 'OK ' + ago(d.okAgo) + ' (' + d.ms + ' ms)' : esc(d.error || ('chyba ' + d.code)) + ', zkoušeno ' + ago(d.ago) +
+          (d.okAgo >= 0 ? ', naposledy OK ' + ago(d.okAgo) : '')));
+      rows.unshift('🌐 Internet: ' + (R.online ? 'připojeno' : 'NE') + ' · DNS ' + esc(R.dns || '?') + ' · čas ' + (R.clock ? 'OK' : 'nenastaven') + ' · volná paměť ' + R.heap + ' kB');
+      if (!(R.diag || []).length) rows.push('Zatím se nic nestahovalo – zapni radar nebo klepni na „Zkusit stáhnout hned“.');
+      $('diagList').innerHTML = rows.join('<br>');
+    }
     document.querySelectorAll('#radarRange button').forEach(b => b.classList.toggle('active', +b.dataset.v === R.range));
     $('radarInShow').checked = R.inShow;
     $('rainAlert').checked = R.rainAlert;
@@ -841,6 +855,7 @@ document.querySelectorAll('[data-radar]').forEach(b => b.onclick = () => api('/a
 document.querySelectorAll('#radarRange button').forEach(b => b.onclick = () => saveSettings({ radarRange: b.dataset.v }).then(refresh));
 $('radarInShow').onchange = e => saveSettings({ radarInShow: e.target.checked ? 1 : 0 });
 $('rainAlert').onchange = e => saveSettings({ rainAlert: e.target.checked ? 1 : 0 });
+$('diagRetry').onclick = () => api('/api/radar', { show: 'retry' }).then(() => toast('Stahuji znovu…')).catch(e => toast(e.message));
 ['weatherFx', 'forecastAlert', 'planeAlert', 'issAlert'].forEach(k => $(k).onchange = e => saveSettings({ [k]: e.target.checked ? 1 : 0 }));
 $('homeJen').onclick = () => { $('homeName').value = 'Jenišovice'; $('homeLat').value = '50.6170'; $('homeLon').value = '15.1410'; };
 $('homeSave').onclick = () => saveSettings({ homeName: $('homeName').value, homeLat: $('homeLat').value.replace(',', '.'), homeLon: $('homeLon').value.replace(',', '.') })

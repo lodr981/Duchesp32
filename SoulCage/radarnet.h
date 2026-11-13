@@ -33,3 +33,6 @@ void radarNetSetAlerts(bool planesOverhead, bool issPasses);
 uint32_t radarOverhead(OverheadAlert &out);  // returns a counter that grows with every new alert
 void radarNetDemandIss();
 bool radarIss(IssInfo &out);
+// Last result of every data source for the app: [{"name","ok","code","ago","okAgo","ms","error"}]
+void radarNetDiagJson(String &out);
+void radarNetRetry();  // fetch everything again right now

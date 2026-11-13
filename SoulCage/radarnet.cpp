@@ -8,6 +8,7 @@
 #include <math.h>
 #include <new>
 #include <time.h>
+#include <WiFi.h>
 #include "certs.h"
 #include "net.h"
 #include "isspass.h"
@@ -63,25 +64,101 @@ static void *psram(size_t n) {
 
 // ------------------------------------------------------------------ HTTP
 
+// What happened to the last request of every source, for the app ("Stav stahování").
+struct SourceDiag {
+  const char *host;
+  const char *name;
+  int code;          // HTTP status, or a negative HTTPClient error
+  char error[64];    // readable reason when it failed
+  uint32_t at;       // millis of the last attempt
+  uint32_t okAt;     // millis of the last success
+  uint16_t ms;       // how long the last request took
+  bool insecure;     // only worked without certificate check
+};
+static SourceDiag diag[] = {
+    {"opendata.chmi.cz", "Radar ČHMÚ", 0, "", 0, 0, 0, false},
+    {"opendata.adsb.fi", "Letadla adsb.fi", 0, "", 0, 0, 0, false},
+    {"api.adsb.lol", "Letadla adsb.lol", 0, "", 0, 0, 0, false},
+    {"api.open-meteo.com", "Teplota a předpověď", 0, "", 0, 0, 0, false},
+    {"api.adsbdb.com", "Trasy letadel", 0, "", 0, 0, 0, false},
+    {"celestrak.org", "Dráha ISS", 0, "", 0, 0, 0, false},
+};
+
+static SourceDiag *diagFor(const char *url) {
+  for (SourceDiag &d : diag) {
+    if (strstr(url, d.host)) return &d;
+  }
+  return nullptr;
+}
+
 // Verified TLS first; these public feeds fall back to an unverified connection
 // if their certificate chain is not in our small root list.
 static int httpGet(HTTPClient &http, NetworkClientSecure &client, const char *url, bool &insecureUsed) {
+  SourceDiag *d = diagFor(url);
+  uint32_t started = millis();
+  if (d) d->at = started ? started : 1;
+  // Name lookup first: a clear message when DNS is the problem.
+  if (d) {
+    IPAddress ip;
+    if (!WiFi.hostByName(d->host, ip)) {
+      d->code = -100;
+      snprintf(d->error, sizeof(d->error), "DNS: %s nenalezen", d->host);
+      d->ms = millis() - started;
+      return -1;
+    }
+  }
+  int code = -1;
+  char tlsError[64] = "";
   for (int attempt = 0; attempt < 2; attempt++) {
     if (attempt == 0) client.setCACert(OTA_ROOT_CAS);
     else client.setInsecure();
+    client.setHandshakeTimeout(15);  // seconds; the default is two minutes
     http.setConnectTimeout(8000);
     http.setTimeout(12000);
     http.useHTTP10(true);  // plain body, no chunked encoding
-    http.setUserAgent("SoulCage-pendant");
-    if (!http.begin(client, url)) return -1;
-    int code = http.GET();
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    http.setUserAgent("SoulCage-pendant/1.0 (ESP32)");
+    if (!http.begin(client, url)) {
+      code = -1;
+      break;
+    }
+    code = http.GET();
     if (code > 0) {
       insecureUsed = attempt == 1;
-      return code;
+      break;
     }
+    client.lastError(tlsError, sizeof(tlsError));
     http.end();
   }
-  return -1;
+  if (d) {
+    d->code = code;
+    d->ms = millis() - started;
+    d->insecure = code > 0 && insecureUsed;
+    if (code == 200) {
+      d->error[0] = 0;
+    } else if (code > 0) {
+      snprintf(d->error, sizeof(d->error), "server odpověděl HTTP %d", code);
+    } else {
+      String e = HTTPClient::errorToString(code);
+      snprintf(d->error, sizeof(d->error), "%s%s%s", e.c_str(), tlsError[0] ? " · " : "", tlsError);
+    }
+  }
+  return code;
+}
+
+// Marks the source of url as working (called after the data was parsed).
+static void diagOk(const char *url) {
+  SourceDiag *d = diagFor(url);
+  if (d) {
+    d->okAt = millis();
+    if (!d->okAt) d->okAt = 1;
+    d->error[0] = 0;
+  }
+}
+
+static void diagFail(const char *url, const char *why) {
+  SourceDiag *d = diagFor(url);
+  if (d) snprintf(d->error, sizeof(d->error), "%s", why);
 }
 
 // Reads the whole body into buf (cap bytes). Returns the length or -1.
@@ -174,6 +251,8 @@ static bool scanIndex() {
     memmove(window, window + len - keep, keep);
   }
   http.end();
+  if (topCount > 0) diagOk(CHMU_INDEX_URL);
+  else diagFail(CHMU_INDEX_URL, "v seznamu ČHMÚ nejsou žádné snímky");
   return topCount > 0;
 }
 
@@ -189,7 +268,10 @@ static bool downloadPng(const char *name, uint8_t **out, size_t *outSize) {
   }
   long got = readBody(http, download, CHMU_MAX_PNG);
   http.end();
-  if (got < 8 || memcmp(download, "\x89PNG\r\n\x1a\n", 8) != 0) return false;
+  if (got < 8 || memcmp(download, "\x89PNG\r\n\x1a\n", 8) != 0) {
+    diagFail(url, got < 0 ? "snímek radaru se nestáhl celý" : "snímek radaru není PNG");
+    return false;
+  }
   uint8_t *copy = (uint8_t *)psram(got);
   if (!copy) return false;
   memcpy(copy, download, got);
@@ -397,7 +479,10 @@ static bool fetchPlanesFrom(const char *url, Plane *out, int &outCount) {
   }
   long len = readBody(http, (uint8_t *)jsonBody, JSON_CAP - 1);
   http.end();
-  if (len < 2) return false;
+  if (len < 2) {
+    diagFail(url, "odpověď se nestáhla celá");
+    return false;
+  }
   jsonBody[len] = 0;
   JsonDocument filter;
   for (const char *key : {"ac", "aircraft"}) {
@@ -412,10 +497,19 @@ static bool fetchPlanesFrom(const char *url, Plane *out, int &outCount) {
     f["t"] = true;
   }
   JsonDocument doc;
-  if (deserializeJson(doc, jsonBody, len, DeserializationOption::Filter(filter))) return false;
+  DeserializationError je = deserializeJson(doc, jsonBody, len, DeserializationOption::Filter(filter));
+  if (je) {
+    char why[48];
+    snprintf(why, sizeof(why), "chyba JSON: %s", je.c_str());
+    diagFail(url, why);
+    return false;
+  }
   JsonArrayConst list = doc["ac"].as<JsonArrayConst>();
   if (list.isNull()) list = doc["aircraft"].as<JsonArrayConst>();
-  if (list.isNull()) return false;
+  if (list.isNull()) {
+    diagFail(url, "v odpovědi chybí seznam letadel");
+    return false;
+  }
   Plane tmp[RADAR_MAX_PLANES];
   int n = 0;
   for (JsonObjectConst a : list) {
@@ -440,6 +534,7 @@ static bool fetchPlanesFrom(const char *url, Plane *out, int &outCount) {
   }
   memcpy(out, tmp, sizeof(Plane) * n);
   outCount = n;
+  diagOk(url);
   return true;
 }
 
@@ -534,6 +629,7 @@ static void lookupRoute(const char *callsign, OverheadAlert &a) {
   jsonBody[len] = 0;
   JsonDocument doc;
   if (deserializeJson(doc, jsonBody, len)) return;
+  diagOk(url);
   JsonObjectConst route = doc["response"]["flightroute"].as<JsonObjectConst>();
   if (route.isNull()) return;
   const char *from = route["origin"]["municipality"] | "";
@@ -617,7 +713,11 @@ static bool fetchTle() {
   http.end();
   if (len < 100) return false;
   jsonBody[len] = 0;
-  if (!issLoadTle(*sat, jsonBody)) return false;
+  if (!issLoadTle(*sat, jsonBody)) {
+    diagFail(TLE_URL, "v odpovědi není dráha ISS");
+    return false;
+  }
+  diagOk(TLE_URL);
   tleOk = true;
   tleFetchedAt = millis();
   return true;
@@ -709,12 +809,22 @@ static void fetchCurrent() {
   }
   long len = readBody(http, (uint8_t *)jsonBody, JSON_CAP - 1);
   http.end();
-  if (len < 2) return;
+  if (len < 2) {
+    diagFail(url, "odpověď se nestáhla celá");
+    return;
+  }
   jsonBody[len] = 0;
   JsonDocument doc;
-  if (deserializeJson(doc, jsonBody, len)) return;
+  if (deserializeJson(doc, jsonBody, len)) {
+    diagFail(url, "chyba JSON");
+    return;
+  }
   JsonObjectConst cur = doc["current"].as<JsonObjectConst>();
-  if (!cur["temperature_2m"].is<float>()) return;
+  if (!cur["temperature_2m"].is<float>()) {
+    diagFail(url, "v odpovědi chybí teplota");
+    return;
+  }
+  diagOk(url);
   CurrentWeather w;
   w.valid = true;
   w.tempC = cur["temperature_2m"];
@@ -915,6 +1025,36 @@ bool radarIss(IssInfo &out) {
   xSemaphoreGive(lock);
   if (!out.valid) out.status = issStatus;
   return out.valid;
+}
+
+void radarNetDiagJson(String &out) {
+  uint32_t now = millis();
+  out = "[";
+  bool first = true;
+  for (const SourceDiag &d : diag) {
+    if (!d.at) continue;
+    char buf[200];
+    snprintf(buf, sizeof(buf), "%s{\"name\":\"%s\",\"ok\":%s,\"code\":%d,\"ago\":%lu,\"okAgo\":%ld,\"ms\":%u,\"error\":\"",
+             first ? "" : ",", d.name, d.okAt && d.okAt >= d.at - 1 && !d.error[0] ? "true" : "false", d.code,
+             (unsigned long)((now - d.at) / 1000), d.okAt ? (long)((now - d.okAt) / 1000) : -1L, (unsigned)d.ms);
+    out += buf;
+    for (const char *c = d.error; *c; c++) {
+      if (*c == '"' || *c == '\\') out += '\\';
+      if ((uint8_t)*c >= 32) out += *c;
+    }
+    out += "\"}";
+    first = false;
+  }
+  out += "]";
+}
+
+void radarNetRetry() {
+  uint32_t now = millis();
+  if (!now) now = 1;
+  weatherFetchedAt = planesFetchedAt = currentFetchedAt = currentTriedAt = 0;
+  tleTriedAt = 0;
+  issComputedAt = 0;
+  weatherWantedAt = planesWantedAt = tempWantedAt = issWantedAt = now;
 }
 
 const char *radarStatus(bool weather) {
