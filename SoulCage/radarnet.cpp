@@ -10,6 +10,7 @@
 #include <time.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <mbedtls/platform.h>
 #include "certs.h"
 #include "net.h"
 #include "isspass.h"
@@ -62,6 +63,27 @@ static void *psram(size_t n) {
   void *p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   return p ? p : malloc(n);
 }
+
+// TLS buffers (about 40 kB per connection) go to PSRAM: the internal RAM is
+// too small for them next to the display, Wi-Fi and the tasks.
+static void *tlsCalloc(size_t n, size_t size) {
+  void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+static void tlsFree(void *p) {
+  heap_caps_free(p);
+}
+
+// Parsed JSON lives in PSRAM too.
+struct SpiRamAllocator : ArduinoJson::Allocator {
+  void *allocate(size_t n) override { return psram(n); }
+  void deallocate(void *p) override { heap_caps_free(p); }
+  void *reallocate(void *p, size_t n) override {
+    void *q = heap_caps_realloc(p, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    return q ? q : heap_caps_realloc(p, n, MALLOC_CAP_8BIT);
+  }
+};
+static SpiRamAllocator spiRam;
 
 // ------------------------------------------------------------------ HTTP
 
@@ -485,7 +507,7 @@ static bool fetchPlanesFrom(const char *url, Plane *out, int &outCount) {
     return false;
   }
   jsonBody[len] = 0;
-  JsonDocument filter;
+  JsonDocument filter(&spiRam);
   for (const char *key : {"ac", "aircraft"}) {
     JsonObject f = filter[key].add<JsonObject>();
     f["flight"] = true;
@@ -497,7 +519,7 @@ static bool fetchPlanesFrom(const char *url, Plane *out, int &outCount) {
     f["hex"] = true;
     f["t"] = true;
   }
-  JsonDocument doc;
+  JsonDocument doc(&spiRam);
   DeserializationError je = deserializeJson(doc, jsonBody, len, DeserializationOption::Filter(filter));
   if (je) {
     char why[48];
@@ -628,7 +650,7 @@ static void lookupRoute(const char *callsign, OverheadAlert &a) {
   http.end();
   if (len < 2) return;
   jsonBody[len] = 0;
-  JsonDocument doc;
+  JsonDocument doc(&spiRam);
   if (deserializeJson(doc, jsonBody, len)) return;
   diagOk(url);
   JsonObjectConst route = doc["response"]["flightroute"].as<JsonObjectConst>();
@@ -837,7 +859,7 @@ static void fetchCurrent() {
     return;
   }
   jsonBody[len] = 0;
-  JsonDocument doc;
+  JsonDocument doc(&spiRam);
   if (deserializeJson(doc, jsonBody, len)) {
     diagFail(url, "chyba JSON");
     return;
@@ -944,9 +966,11 @@ void radarNetInit() {
   // Local time for the frame labels (Central European with summer time).
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
   tzset();
-  sat = new Sgp4();
-  xTaskCreatePinnedToCore(radarTask, "radar", 20480, nullptr, 1, &netTaskHandle, 0);
-  xTaskCreatePinnedToCore(issTask, "iss", 16384, nullptr, 0, &issTaskHandle, 1);
+  mbedtls_platform_set_calloc_free(tlsCalloc, tlsFree);
+  sat = new (psram(sizeof(Sgp4))) Sgp4();
+  // Stacks are internal RAM: sized from the measured use (about 6 kB and 1 kB) plus headroom.
+  xTaskCreatePinnedToCore(radarTask, "radar", 12288, nullptr, 1, &netTaskHandle, 0);
+  xTaskCreatePinnedToCore(issTask, "iss", 6144, nullptr, 0, &issTaskHandle, 1);
 }
 
 void radarNetDemand(bool weather, bool planes) {
@@ -1079,11 +1103,13 @@ void radarNetDiagJson(String &out) {
   char head[300];
   snprintf(head, sizeof(head),
            "{\"step\":\"%s\",\"stepFor\":%lu,\"loopAgo\":%ld,\"stackNet\":%u,\"stackIss\":%u,\"uptime\":%lu,"
-           "\"reset\":%d,\"sources\":[",
+           "\"reset\":%d,\"heapInt\":%u,\"heapBlock\":%u,\"psram\":%u,\"sources\":[",
            (const char *)step, (unsigned long)((now - stepAt) / 1000), loopAt ? (long)((now - loopAt) / 1000) : -1L,
            netTaskHandle ? (unsigned)uxTaskGetStackHighWaterMark(netTaskHandle) : 0,
            issTaskHandle ? (unsigned)uxTaskGetStackHighWaterMark(issTaskHandle) : 0, (unsigned long)(now / 1000),
-           (int)esp_reset_reason());
+           (int)esp_reset_reason(), (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+           (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
+           (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
   out = head;
   bool first = true;
   for (const SourceDiag &d : diag) {

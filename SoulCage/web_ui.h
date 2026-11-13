@@ -688,6 +688,7 @@ function render(s) {
       rows.unshift('⚙️ Právě: ' + esc(D.step || '?') + ' (' + (D.stepFor || 0) + ' s) · smyčka ' + ago(D.loopAgo) +
         ' · běží ' + Math.round((D.uptime || 0) / 60) + ' min · poslední start: ' + (resets[D.reset] || D.reset) +
         ' · zásobník ' + D.stackNet + '/' + D.stackIss + ' B');
+      rows.unshift('🧠 Paměť: vnitřní ' + D.heapInt + ' kB (největší kus ' + D.heapBlock + ' kB) · PSRAM ' + D.psram + ' kB');
       rows.unshift('🌐 Internet: ' + (R.online ? 'připojeno' : 'NE') + ' · DNS ' + esc(R.dns || '?') + ' · čas ' + (R.clock ? 'OK' : 'nenastaven') + ' · volná paměť ' + R.heap + ' kB');
       if (!src.length) rows.push('Zatím se nic nestahovalo – klepni na „Zkusit stáhnout hned“.');
       $('diagList').innerHTML = rows.join('<br>');
