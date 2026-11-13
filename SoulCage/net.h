@@ -11,3 +11,4 @@ bool netOnline();
 int netClients();            // phones connected to the hotspot
 uint32_t netUiServedAt();    // millis() when the app page was last loaded (0 = never)
 String netHotspotName();  // connected to a saved network (internet)
+String netDnsServer();  // DNS server the home Wi-Fi gave us (diagnostics)

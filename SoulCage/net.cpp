@@ -683,6 +683,10 @@ String netHotspotName() {
   return apSsid();
 }
 
+String netDnsServer() {
+  return staConnected ? WiFi.dnsIP(0).toString() : String("-");
+}
+
 bool netOnline() {
   return mode != NET_OFF && staConnected;
 }

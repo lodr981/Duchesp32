@@ -13,7 +13,6 @@
 */
 
 #include <time.h>
-#include <WiFi.h>
 #include "animations.h"
 #include "app.h"
 #include "config.h"
@@ -683,7 +682,7 @@ void appStatusJson(String &body) {
     {
       String dj;
       radarNetDiagJson(dj);
-      body += ",\"diag\":" + dj + ",\"dns\":" + jsonText(WiFi.dnsIP(0).toString().c_str()) +
+      body += ",\"diag\":" + dj + ",\"dns\":" + jsonText(netDnsServer().c_str()) +
               ",\"clock\":" + String(time(nullptr) > 1700000000 ? "true" : "false") +
               ",\"heap\":" + String(ESP.getFreeHeap() / 1024);
     }
