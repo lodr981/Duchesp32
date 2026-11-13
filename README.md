@@ -24,6 +24,21 @@ od Vishala Soniho (MIT), rozšířený o:
 
 Hardware: **Waveshare ESP32-S3-LCD-1.28** (kulatý GC9A01 240×240, ESP32-S3R2, 16 MB flash), Li-Po baterie, vypínač.
 
+## Novinky 1.9 – Předpověď, bouřky, letadla nad námi, ISS 📅⚡✈️🛰️
+
+- **Předpověď** (Open-Meteo): obrazovka Dnes / Zítra s ikonami, teplotami a deštěm. Přívěsek ji sám ukáže
+  ráno 6:30–9:30 (na dnešek) a večer 18:30–21:00 (na zítřek) s radou: „Vezmi si deštník!“, „Mrzne – vezmi čepici!“…
+- **Počasí na skle**: když venku prší, sněží, je bouřka nebo mlha, děje se to i ve sklenici s duší
+  (kapky stékají po skle, sněhové vločky, blesky). Při mrazu sklo zamrzne.
+- **Bouřky**: nejsilnější buňky radaru ČHMÚ (veřejná data o jednotlivých úderech blesků nejsou) – na meteoradaru
+  na nich blikají blesky, dole „Bouřka 14 km Z · blíží se / odchází“. Blíží-li se bouřka na 25 km, radar se ukáže sám.
+- **Letadlo nad námi**: přívěsek každých 20 s kouká nahoru (adsb.fi), když letadlo proletí do 3 km od domova,
+  ukáže „Nad tebou!“, typ letadla a trasu (adsbdb.com, např. „Praha → Kodaň“). 7–21 h, nejvýš jednou za 10 minut.
+- **ISS**: dráha z celestrak.org, přelety počítá přímo přívěsek (SGP4, knihovna Hopperpop/Sgp4-Library, MIT,
+  v `SoulCage/src/sgp4`). Hledá přelety viditelné okem (tmavá obloha, ISS na slunci, výš než 15°), 4 minuty předem
+  ukáže mapu oblohy s dráhou a kam se dívat; během přeletu ISS svítí na mapě živě.
+- 1× ťuk na radaru přepíná meteoradar → letadla → předpověď → ISS. Vše jde vypnout v aplikaci (karta Radar).
+
 ## Novinky 1.8 – Teplota a letadla v aplikaci 🌡️
 
 - **Aktuální teplota** u vás (Open-Meteo, `api.open-meteo.com`, bez klíče, každých 10 minut): na meteoradaru

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include "isspass.h"
 #include "radarview.h"
 
 static void writePpm(const std::string &path, const uint16_t *px) {
@@ -88,6 +89,61 @@ int main(int argc, char **argv) {
   (void)none;
   screens.drawWeather(canvas, view, nullptr, 0, "Jenišovice", "Bez internetu", now, 0);
   writePpm(out + "/nonet.ppm", buf.data());
+  // aircraft right overhead
+  OverheadAlert alert;
+  alert.active = true;
+  alert.plane = planes[0];
+  alert.plane.lat = 50.625f, alert.plane.lon = 15.150f;
+  snprintf(alert.plane.hex, sizeof(alert.plane.hex), "49d2b1");
+  aircraftTypeName("A20N", alert.typeName, sizeof(alert.typeName));
+  snprintf(alert.from, sizeof(alert.from), "Praha");
+  snprintf(alert.to, sizeof(alert.to), "Kodaň");
+  for (int i = 0; i < 40; i++) {
+    screens.drawPlanes(canvas, view, planes, 6, "Jenišovice", "", now, i * 0.05f, &alert);
+    char name[64];
+    snprintf(name, sizeof(name), "/o%04d.ppm", i);
+    writePpm(out + name, buf.data());
+  }
+  // forecast: morning (today) and evening (tomorrow)
+  Forecast fc;
+  fc.valid = true;
+  fc.day[0] = {2, 13, 4, 10, 0};
+  fc.day[1] = {63, 9, 3, 80, 6.5f};
+  screens.drawForecast(canvas, fc, now, "Jenišovice", false, 1.0f);
+  writePpm(out + "/forecast_am.ppm", buf.data());
+  screens.drawForecast(canvas, fc, now, "Jenišovice", true, 1.0f);
+  writePpm(out + "/forecast_pm.ppm", buf.data());
+  fc.day[1] = {95, 27, 16, 70, 12};
+  screens.drawForecast(canvas, fc, now, "Jenišovice", true, 1.0f);
+  writePpm(out + "/forecast_storm.ppm", buf.data());
+  // ISS with a real (old) orbit: the pass search must find a visible pass
+  Sgp4 sat;
+  const char *tle =
+      "ISS (ZARYA)\n"
+      "1 25544U 98067A   16065.25775256 -.00164574  00000-0 -25195-2 0  9990\n"
+      "2 25544  51.6436 216.3171 0002750 185.0333 238.0864 15.54246933988812\n";
+  if (!issLoadTle(sat, tle)) {
+    printf("TLE parse failed\n");
+    return 1;
+  }
+  IssInfo iss;
+  time_t start = 0, end = 0, t0 = 1457158000;  // 2016-03-05
+  bool found = false;
+  for (int day = 0; day < 4 && !found; day++) found = issFindPass(sat, view.lat, view.lon, t0 + day * 86400, iss, start, end);
+  if (!found) {
+    printf("no visible ISS pass found\n");
+    return 1;
+  }
+  printf("ISS pass %ld..%ld, %d points, az %.0f -> %.0f, max %.0f deg\n", (long)start, (long)end, iss.trackCount,
+         iss.azStart, iss.azEnd, iss.maxEl);
+  issUpdateLive(sat, start - 600, start, end, iss);
+  screens.drawIss(canvas, iss, 0.5f);
+  printf("before: %s\n", iss.when);
+  writePpm(out + "/iss_before.ppm", buf.data());
+  issUpdateLive(sat, (start + end) / 2, start, end, iss);
+  printf("during: el %.0f sunlit %d\n", iss.el, iss.sunlit);
+  screens.drawIss(canvas, iss, 0.5f);
+  writePpm(out + "/iss_now.ppm", buf.data());
   printf("ok\n");
   return 0;
 }

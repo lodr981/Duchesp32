@@ -297,12 +297,21 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
   <div class="grid3">
     <button class="big" data-radar="weather"><span>🌧️</span>Meteoradar</button>
     <button class="big" data-radar="planes"><span>✈️</span>Letadla</button>
+    <button class="big" data-radar="forecast"><span>📅</span>Předpověď</button>
+  </div>
+  <div class="grid2">
+    <button class="big" data-radar="iss"><span>🛰️</span>ISS</button>
     <button class="big" data-radar="off"><span>👻</span>Zpět</button>
   </div>
+  <div class="muted" id="radarInfo" style="line-height:1.6;margin:6px 0 4px"></div>
   <p class="muted" style="margin:10px 0 6px">Dosah</p>
   <div class="seg" id="radarRange"><button data-v="25">25 km</button><button data-v="50">50 km</button><button data-v="100">100 km</button></div>
   <div class="row"><label for="radarInShow">Radar v Překvapení</label><input type="checkbox" id="radarInShow"></div>
-  <div class="row"><label for="rainAlert">Ukázat radar, když se blíží déšť</label><input type="checkbox" id="rainAlert"></div>
+  <div class="row"><label for="rainAlert">Ukázat radar, když se blíží déšť nebo bouřka</label><input type="checkbox" id="rainAlert"></div>
+  <div class="row"><label for="weatherFx">Počasí na skle (déšť, sníh, bouřka, mráz)</label><input type="checkbox" id="weatherFx"></div>
+  <div class="row"><label for="forecastAlert">Předpověď ráno a večer</label><input type="checkbox" id="forecastAlert"></div>
+  <div class="row"><label for="planeAlert">Hlásit letadlo přímo nad námi</label><input type="checkbox" id="planeAlert"></div>
+  <div class="row"><label for="issAlert">Hlásit přelet ISS</label><input type="checkbox" id="issAlert"></div>
   <details class="more" id="planesBox"><summary>✈️ Letadla, která teď přívěsek vidí <span id="planesCount"></span></summary>
     <div id="planesList"><p class="muted">Hledám letadla…</p></div>
     <p class="muted">Klepni na letadlo a otevře se na živé mapě (globe.adsb.fi) – uvidíš, odkud kam letí. <b>FR24</b> ho najde na Flightradaru podle volacího znaku. Odkazy potřebují v telefonu internet.</p>
@@ -316,7 +325,12 @@ details.more summary{cursor:pointer;color:var(--muted);margin:8px 0}
     <ul>
       <li><b>Meteoradar</b> ukazuje srážky z radarů ČHMÚ za poslední půlhodinu (snímek po 5 minutách) a napíše, kde je nejbližší déšť.</li>
       <li><b>Letadla</b> jsou živá data ADS-B (adsb.fi / adsb.lol): šipka = směr letu, barva = výška (oranžová nízko, modrá vysoko).</li>
-      <li>Na přívěsku <b>1× ťuk</b> přepíná meteoradar ↔ letadla, <b>2× ťuk</b> nebo tlačítko BOOT vrátí duši.</li>
+      <li><b>Bouřky</b> = nejsilnější buňky na radaru ČHMÚ, blikají na nich blesky. Přívěsek pozná, jestli se bouřka blíží, nebo odchází.</li>
+      <li><b>Předpověď</b> (Open-Meteo) ukáže přívěsek sám ráno 6:30–9:30 na dnešek a večer 18:30–21:00 na zítřek – s radou (deštník, čepice…).</li>
+      <li><b>Počasí na skle</b>: když venku prší, sněží nebo je bouřka, děje se to i ve sklenici s duší. Při mrazu sklo zamrzne.</li>
+      <li><b>Letadlo nad námi</b>: když letadlo proletí do 3 km od domova (7–21 h), přívěsek ukáže typ a odkud kam letí (adsbdb.com). Nejvýš jednou za 10 minut.</li>
+      <li><b>ISS</b>: vesmírná stanice. Přívěsek si spočítá, kdy přeletí viditelně (za tmy a osvícená sluncem), 4 minuty předem ukáže, kam se dívat. Na obloze vypadá jako jasná hvězda, která se rychle pohybuje.</li>
+      <li>Na přívěsku <b>1× ťuk</b> přepíná meteoradar → letadla → předpověď → ISS, <b>2× ťuk</b> nebo tlačítko BOOT vrátí duši.</li>
       <li>Přívěsek musí být na internetu – v Nastavení → Wi-Fi ulož domácí Wi-Fi nebo hotspot iPhonu.</li>
       <li>Nápad a zdroje dat podle projektu <b>MeteoPlaneRadar</b> (chiptron.cz).</li>
     </ul>
@@ -645,7 +659,20 @@ function render(s) {
     $('radarTemp').innerHTML = R.temp !== undefined ? '🌡️ <b>' + String(Math.round(R.temp * 10) / 10).replace('.', ',') + ' °C</b>' +
       [R.sky, R.wind !== undefined ? 'vítr ' + R.wind + ' km/h' : ''].filter(x => x).join(' · ') : '';
     $('radarRain').textContent = R.online ? (R.rain ? '🌧️ ' + R.rain : (R.weatherStatus || '')) : 'Přívěsek není na internetu – ulož Wi-Fi v Nastavení.';
-    document.querySelectorAll('[data-radar]').forEach(b => b.classList.toggle('active', (b.dataset.radar === 'weather' && R.mode === 1) || (b.dataset.radar === 'planes' && R.mode === 2)));
+    const modes = { weather: 1, planes: 2, forecast: 3, iss: 4 };
+    document.querySelectorAll('[data-radar]').forEach(b => b.classList.toggle('active', modes[b.dataset.radar] === R.mode));
+    const info = [];
+    if (R.storm) info.push('⚡ ' + R.storm);
+    if (R.forecast) {
+      const day = (n, d) => n + ': ' + (d.sky ? d.sky + ', ' : '') + d.max + '° / ' + d.min + '°' + (d.rain >= 20 ? ', déšť ' + d.rain + ' %' : '');
+      info.push('📅 ' + day('Dnes', R.forecast[0]));
+      info.push('📅 ' + day('Zítra', R.forecast[1]));
+    }
+    if (R.iss) info.push('🛰️ ISS: ' + R.iss + (R.issPath ? ' (' + R.issPath + ')' : ''));
+    if (R.lastOverhead) info.push('✈️ Naposledy nad námi: ' + R.lastOverhead);
+    if (R.fx || R.frost) info.push('🫙 Na skle teď: ' + [R.fx, R.frost ? 'mráz' : ''].filter(x => x).join(' + '));
+    $('radarInfo').innerHTML = info.map(esc).join('<br>');
+    ['weatherFx', 'forecastAlert', 'planeAlert', 'issAlert'].forEach(k => { if (R[k] !== undefined) $(k).checked = R[k]; });
     document.querySelectorAll('#radarRange button').forEach(b => b.classList.toggle('active', +b.dataset.v === R.range));
     $('radarInShow').checked = R.inShow;
     $('rainAlert').checked = R.rainAlert;
@@ -814,6 +841,7 @@ document.querySelectorAll('[data-radar]').forEach(b => b.onclick = () => api('/a
 document.querySelectorAll('#radarRange button').forEach(b => b.onclick = () => saveSettings({ radarRange: b.dataset.v }).then(refresh));
 $('radarInShow').onchange = e => saveSettings({ radarInShow: e.target.checked ? 1 : 0 });
 $('rainAlert').onchange = e => saveSettings({ rainAlert: e.target.checked ? 1 : 0 });
+['weatherFx', 'forecastAlert', 'planeAlert', 'issAlert'].forEach(k => $(k).onchange = e => saveSettings({ [k]: e.target.checked ? 1 : 0 }));
 $('homeJen').onclick = () => { $('homeName').value = 'Jenišovice'; $('homeLat').value = '50.6170'; $('homeLon').value = '15.1410'; };
 $('homeSave').onclick = () => saveSettings({ homeName: $('homeName').value, homeLat: $('homeLat').value.replace(',', '.'), homeLon: $('homeLon').value.replace(',', '.') })
   .then(() => { toast('Místo uloženo 📍'); refresh(); });

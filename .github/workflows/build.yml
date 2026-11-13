@@ -39,9 +39,13 @@ jobs:
           g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/wisp_preview.cpp SoulCage/wisp.cpp \
             SoulCage/gfx.cpp SoulCage/gfx_text.cpp -o wisp_preview
           mkdir -p wisp-frames && ./wisp_preview wisp-frames 30 300
+          for f in SoulCage/src/sgp4/*.cpp; do g++ -O2 -w -c "$f" -o "sgp4_$(basename "$f" .cpp).o"; done  # third-party
           g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/radar_preview.cpp SoulCage/radarview.cpp \
-            SoulCage/gfx.cpp SoulCage/gfx_text.cpp -o radar_preview
-          mkdir -p radar-frames && ./radar_preview radar-frames
+            SoulCage/isspass.cpp SoulCage/gfx.cpp SoulCage/gfx_text.cpp sgp4_*.o -o radar_preview
+          mkdir -p radar-frames && TZ=CET-1CEST ./radar_preview radar-frames   # also checks the ISS pass search
+          g++ -O2 -std=c++17 -Wall -Wextra -Werror -ISoulCage tools/preview/weatherfx_preview.cpp SoulCage/weatherfx.cpp \
+            SoulCage/gfx.cpp SoulCage/gfx_text.cpp -o weatherfx_preview
+          mkdir -p weatherfx-frames && ./weatherfx_preview weatherfx-frames
           g++ -O2 -std=c++17 -Wall -Wextra -Werror -Itools/preview/shim -ISoulCage tools/preview/souls_preview.cpp \
             SoulCage/gfx.cpp SoulCage/gfx_text.cpp SoulCage/hunt.cpp SoulCage/soul.cpp SoulCage/ghost.cpp SoulCage/pet.cpp \
             -lz -o souls_preview

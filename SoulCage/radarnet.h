@@ -3,7 +3,9 @@
 //  - ČHMÚ precipitation composite (opendata.chmi.cz, PNG every 5 min), decoded into
 //    small frames around home,
 //  - aircraft around home from ADS-B (opendata.adsb.fi, fallback api.adsb.lol),
-//  - current temperature at home (api.open-meteo.com).
+//  - current temperature and forecast at home (api.open-meteo.com),
+//  - routes of aircraft flying over home (api.adsbdb.com),
+//  - ISS orbit (celestrak.org) and visible passes (SGP4, src/sgp4).
 // Data sources as in MeteoPlaneRadar by chiptron.cz (MIT).
 #include <Arduino.h>
 #include "radarview.h"
@@ -25,3 +27,9 @@ bool radarCurrent(CurrentWeather &out);
 // Aircraft within the radar range for the app, nearest first:
 // {"status":"…","planes":[{"hex","cs","type","alt","spd","km","dir"}]}
 void radarPlanesJson(String &out);
+bool radarForecast(Forecast &out);  // today + tomorrow, fetched with the temperature
+// Background watches: aircraft right over home, visible ISS passes.
+void radarNetSetAlerts(bool planesOverhead, bool issPasses);
+uint32_t radarOverhead(OverheadAlert &out);  // returns a counter that grows with every new alert
+void radarNetDemandIss();
+bool radarIss(IssInfo &out);

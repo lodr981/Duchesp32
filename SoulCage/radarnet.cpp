@@ -10,6 +10,7 @@
 #include <time.h>
 #include "certs.h"
 #include "net.h"
+#include "isspass.h"
 
 // ČHMÚ composite: maximum reflectivity, transparent PNG for map overlays.
 #define CHMU_INDEX_URL "https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png/"
@@ -385,7 +386,7 @@ static void copyId(char *out, size_t cap, const char *in) {
   out[n] = 0;
 }
 
-static bool fetchPlanesFrom(const char *url) {
+static bool fetchPlanesFrom(const char *url, Plane *out, int &outCount) {
   NetworkClientSecure client;
   HTTPClient http;
   bool insecure;
@@ -437,33 +438,248 @@ static bool fetchPlanesFrom(const char *url) {
     copyId(p.type, sizeof(p.type), a["t"] | "");
     n++;
   }
-  xSemaphoreTake(lock, portMAX_DELAY);
-  memcpy(planes, tmp, sizeof(Plane) * n);
-  planeCount = n;
-  xSemaphoreGive(lock);
+  memcpy(out, tmp, sizeof(Plane) * n);
+  outCount = n;
   return true;
 }
+
+// Aircraft within radiusKm of home into out (adsb.fi, fallback adsb.lol).
+static bool fetchPlanesAround(const GeoView &v, float radiusKm, Plane *out, int &n) {
+  float nm = radiusKm / 1.852f;
+  char url[160];
+  snprintf(url, sizeof(url), "https://opendata.adsb.fi/api/v3/lat/%.5f/lon/%.5f/dist/%.0f", v.lat, v.lon, nm);
+  if (fetchPlanesFrom(url, out, n)) return true;
+  snprintf(url, sizeof(url), "https://api.adsb.lol/v2/point/%.5f/%.5f/%.0f", v.lat, v.lon, nm);
+  return fetchPlanesFrom(url, out, n);
+}
+
+static float distanceKm(const GeoView &v, float lat, float lon) {
+  float dx = (lon - v.lon) * 111.32f * cosf(v.lat * 0.017453293f), dy = (lat - v.lat) * 111.32f;
+  return sqrtf(dx * dx + dy * dy);
+}
+
+static void checkOverhead(const GeoView &v, const Plane *list, int n);
 
 static void fetchPlanes() {
   GeoView v;
   xSemaphoreTake(lock, portMAX_DELAY);
   v = view;
   xSemaphoreGive(lock);
-  float nm = v.rangeKm / 1.852f;
-  char url[160];
-  snprintf(url, sizeof(url), "https://opendata.adsb.fi/api/v3/lat/%.5f/lon/%.5f/dist/%.0f", v.lat, v.lon, nm);
-  bool ok = fetchPlanesFrom(url);
-  if (!ok) {
-    snprintf(url, sizeof(url), "https://api.adsb.lol/v2/point/%.5f/%.5f/%.0f", v.lat, v.lon, nm);
-    ok = fetchPlanesFrom(url);
+  static Plane tmp[RADAR_MAX_PLANES];
+  int n = 0;
+  bool ok = fetchPlanesAround(v, v.rangeKm, tmp, n);
+  if (ok) {
+    xSemaphoreTake(lock, portMAX_DELAY);
+    memcpy(planes, tmp, sizeof(Plane) * n);
+    planeCount = n;
+    xSemaphoreGive(lock);
+    checkOverhead(v, tmp, n);
   }
   planesFetchedAt = millis();
   planesStatus = ok ? "Žádná letadla v okolí" : "Data letadel nedostupná";
 }
 
+// ------------------------------------------------------------------ aircraft right overhead
+
+#define OVERHEAD_KM 3.0f
+#define OVERHEAD_PERIOD_MS 20000UL
+static volatile bool planeAlertOn, issAlertOn;
+static OverheadAlert overhead;
+static uint32_t overheadSeq, overheadFetchedAt;
+static struct {
+  char hex[8];
+  uint32_t at;
+} recentOverhead[8];
+
+// English city names from the route database -> Czech for the common ones.
+static const char *czechCity(const char *en) {
+  static const char *const map[][2] = {
+      {"Prague", "Praha"},       {"London", "Londýn"},      {"Vienna", "Vídeň"},        {"Munich", "Mnichov"},
+      {"Warsaw", "Varšava"},     {"Rome", "Řím"},           {"Paris", "Paříž"},         {"Copenhagen", "Kodaň"},
+      {"Brussels", "Brusel"},    {"Athens", "Atény"},       {"Lisbon", "Lisabon"},      {"Moscow", "Moskva"},
+      {"Cologne", "Kolín n. R."}, {"Zurich", "Curych"},     {"Geneva", "Ženeva"},       {"Venice", "Benátky"},
+      {"Milan", "Milán"},        {"Naples", "Neapol"},      {"Dresden", "Drážďany"},    {"Berlin", "Berlín"},
+      {"Bucharest", "Bukurešť"}, {"Belgrade", "Bělehrad"},  {"Krakow", "Krakov"},       {"Kraków", "Krakov"},
+      {"Wroclaw", "Vratislav"},  {"Wrocław", "Vratislav"},  {"Gdansk", "Gdaňsk"},       {"Gdańsk", "Gdaňsk"},
+      {"Nuremberg", "Norimberk"}, {"Frankfurt am Main", "Frankfurt"}, {"Cairo", "Káhira"},
+      {"Stockholm", "Stockholm"}, {"Helsinki", "Helsinky"}, {"Bratislava", "Bratislava"}, {"Budapest", "Budapešť"},
+      {"Leipzig", "Lipsko"},     {"Hanover", "Hannover"},   {"Riga", "Riga"},           {"Vilnius", "Vilnius"},
+      {"Tallinn", "Tallinn"},    {"Kyiv", "Kyjev"},         {"Kiev", "Kyjev"},          {"Sofia", "Sofie"},
+      {"Istanbul", "Istanbul"},  {"Tel Aviv", "Tel Aviv"},  {"Tel Aviv-Yafo", "Tel Aviv"}, {"Heraklion", "Kréta"},
+      {"Palma De Mallorca", "Mallorca"}, {"Palma", "Mallorca"}, {"New York", "New York"}, {"Beijing", "Peking"},
+      {"Seoul", "Soul"},         {"Tokyo", "Tokio"},        {"Dubai", "Dubaj"},         {"Doha", "Dauhá"},
+      {"Rhodes", "Rhodos"},      {"Corfu", "Korfu"},        {"Thessaloniki", "Soluň"},  {"Hurghada", "Hurghada"},
+  };
+  for (const auto &m : map) {
+    if (strcmp(m[0], en) == 0) return m[1];
+  }
+  return en;
+}
+
+// Route and airline for a callsign from adsbdb.com (free, no key). Best effort.
+static void lookupRoute(const char *callsign, OverheadAlert &a) {
+  if (!callsign[0]) return;
+  char url[96];
+  snprintf(url, sizeof(url), "https://api.adsbdb.com/v0/callsign/%s", callsign);
+  NetworkClientSecure client;
+  HTTPClient http;
+  bool insecure;
+  if (httpGet(http, client, url, insecure) != 200) {
+    http.end();
+    return;
+  }
+  long len = readBody(http, (uint8_t *)jsonBody, 16 * 1024);
+  http.end();
+  if (len < 2) return;
+  jsonBody[len] = 0;
+  JsonDocument doc;
+  if (deserializeJson(doc, jsonBody, len)) return;
+  JsonObjectConst route = doc["response"]["flightroute"].as<JsonObjectConst>();
+  if (route.isNull()) return;
+  const char *from = route["origin"]["municipality"] | "";
+  const char *to = route["destination"]["municipality"] | "";
+  const char *airline = route["airline"]["name"] | "";
+  snprintf(a.from, sizeof(a.from), "%s", czechCity(from));
+  snprintf(a.to, sizeof(a.to), "%s", czechCity(to));
+  snprintf(a.airline, sizeof(a.airline), "%s", airline);
+}
+
+static void checkOverhead(const GeoView &v, const Plane *list, int n) {
+  if (!planeAlertOn) return;
+  int best = -1;
+  float bestKm = OVERHEAD_KM;
+  for (int i = 0; i < n; i++) {
+    if (list[i].altM < 300) continue;
+    float km = distanceKm(v, list[i].lat, list[i].lon);
+    if (km < bestKm) {
+      bestKm = km;
+      best = i;
+    }
+  }
+  if (best < 0) return;
+  const Plane &p = list[best];
+  uint32_t now = millis();
+  int slot = 0;
+  for (int i = 0; i < 8; i++) {
+    if (recentOverhead[i].at && strcmp(recentOverhead[i].hex, p.hex) == 0 && now - recentOverhead[i].at < 30 * 60000UL) {
+      return;  // this one was announced already
+    }
+    if (recentOverhead[i].at < recentOverhead[slot].at) slot = i;
+  }
+  snprintf(recentOverhead[slot].hex, sizeof(recentOverhead[slot].hex), "%s", p.hex);
+  recentOverhead[slot].at = now ? now : 1;
+  OverheadAlert a;
+  a.active = true;
+  a.plane = p;
+  a.distanceKm = bestKm;
+  aircraftTypeName(p.type, a.typeName, sizeof(a.typeName));
+  lookupRoute(p.callsign, a);
+  xSemaphoreTake(lock, portMAX_DELAY);
+  overhead = a;
+  overheadSeq++;
+  xSemaphoreGive(lock);
+}
+
+// Small, frequent look straight up while nothing else fetches aircraft.
+static void pollOverhead() {
+  overheadFetchedAt = millis();
+  GeoView v;
+  xSemaphoreTake(lock, portMAX_DELAY);
+  v = view;
+  xSemaphoreGive(lock);
+  static Plane tmp[RADAR_MAX_PLANES];
+  int n = 0;
+  if (fetchPlanesAround(v, 6, tmp, n)) checkOverhead(v, tmp, n);
+}
+
+// ------------------------------------------------------------------ ISS
+
+#define TLE_URL "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE"
+static Sgp4 *sat;
+static bool tleOk;
+static uint32_t tleFetchedAt, tleTriedAt, issComputedAt, issLiveAt;
+static volatile uint32_t issWantedAt;
+static volatile bool issStale;
+static IssInfo iss;
+static time_t passStart, passEnd;
+static const char *issStatus = "Počítám dráhu ISS…";
+
+static bool fetchTle() {
+  tleTriedAt = millis();
+  NetworkClientSecure client;
+  HTTPClient http;
+  bool insecure;
+  if (httpGet(http, client, TLE_URL, insecure) != 200) {
+    http.end();
+    return false;
+  }
+  long len = readBody(http, (uint8_t *)jsonBody, 4096);
+  http.end();
+  if (len < 100) return false;
+  jsonBody[len] = 0;
+  if (!issLoadTle(*sat, jsonBody)) return false;
+  tleOk = true;
+  tleFetchedAt = millis();
+  return true;
+}
+
+static void computePasses(time_t now) {
+  GeoView v;
+  xSemaphoreTake(lock, portMAX_DELAY);
+  v = view;
+  xSemaphoreGive(lock);
+  issStale = false;
+  IssInfo info;
+  time_t s = 0, e = 0;
+  issFindPass(*sat, v.lat, v.lon, now, info, s, e);
+  xSemaphoreTake(lock, portMAX_DELAY);
+  IssInfo old = iss;
+  iss = info;
+  if (old.valid) iss.az = old.az, iss.el = old.el, iss.distKm = old.distKm, iss.sunlit = old.sunlit;
+  passStart = s;
+  passEnd = e;
+  xSemaphoreGive(lock);
+  issComputedAt = millis();
+}
+
+static void updateIssLive(time_t now) {
+  IssInfo info;
+  xSemaphoreTake(lock, portMAX_DELAY);
+  info = iss;
+  xSemaphoreGive(lock);
+  issUpdateLive(*sat, now, passStart, passEnd, info);
+  xSemaphoreTake(lock, portMAX_DELAY);
+  iss = info;
+  xSemaphoreGive(lock);
+  issLiveAt = millis();
+}
+
+static void issTick(bool wanted) {
+  if (!sat) return;
+  time_t now = time(nullptr);
+  if (now < 1700000000) {
+    issStatus = "Čekám na přesný čas…";
+    return;
+  }
+  uint32_t ms = millis();
+  if (!tleOk || ms - tleFetchedAt > 12 * 3600000UL) {
+    if (!tleTriedAt || ms - tleTriedAt > (tleOk ? 30 * 60000UL : 2 * 60000UL)) {
+      if (!fetchTle() && !tleOk) issStatus = "Dráha ISS nedostupná";
+    }
+  }
+  if (!tleOk) return;
+  if (!issComputedAt || issStale || ms - issComputedAt > 15 * 60000UL || (iss.hasPass && now > passEnd)) {
+    computePasses(now);
+  }
+  bool soon = iss.hasPass && now >= passStart - 600 && now <= passEnd + 60;
+  if ((wanted || soon) && ms - issLiveAt > 900) updateIssLive(now);
+  else if (ms - issLiveAt > 60000) updateIssLive(now);
+}
+
 // ------------------------------------------------------------------ Open-Meteo
 
 static CurrentWeather current;
+static Forecast forecast;
 static uint32_t currentFetchedAt, currentTriedAt;
 static volatile uint32_t tempWantedAt;
 static volatile bool tempStale;  // home moved
@@ -475,10 +691,12 @@ static void fetchCurrent() {
   xSemaphoreTake(lock, portMAX_DELAY);
   v = view;
   xSemaphoreGive(lock);
-  char url[200];
+  char url[360];
   snprintf(url, sizeof(url),
            "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
-           "&current=temperature_2m,weather_code,wind_speed_10m",
+           "&current=temperature_2m,weather_code,wind_speed_10m"
+           "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,"
+           "precipitation_sum&timezone=Europe%%2FPrague&forecast_days=2",
            v.lat, v.lon);
   currentTriedAt = millis();
   tempStale = false;
@@ -502,8 +720,21 @@ static void fetchCurrent() {
   w.tempC = cur["temperature_2m"];
   w.code = cur["weather_code"] | -1;
   w.windKmh = cur["wind_speed_10m"] | 0.0f;
+  Forecast f;
+  JsonObjectConst daily = doc["daily"].as<JsonObjectConst>();
+  if (!daily.isNull() && daily["temperature_2m_max"].size() >= 2) {
+    f.valid = true;
+    for (int i = 0; i < 2; i++) {
+      f.day[i].code = daily["weather_code"][i] | -1;
+      f.day[i].tMax = daily["temperature_2m_max"][i] | 0.0f;
+      f.day[i].tMin = daily["temperature_2m_min"][i] | 0.0f;
+      f.day[i].rainProb = daily["precipitation_probability_max"][i] | 0;
+      f.day[i].rainMm = daily["precipitation_sum"][i] | 0.0f;
+    }
+  }
   xSemaphoreTake(lock, portMAX_DELAY);
   current = w;
+  if (f.valid) forecast = f;
   xSemaphoreGive(lock);
   currentFetchedAt = millis();
 }
@@ -517,17 +748,26 @@ static void radarTask(void *) {
     bool wantWeather = weatherWantedAt && now - weatherWantedAt < WEATHER_KEEP_MS;
     bool wantPlanes = planesWantedAt && now - planesWantedAt < DEMAND_KEEP_MS;
     bool wantTemp = tempWantedAt && now - tempWantedAt < WEATHER_KEEP_MS;
-    if (!wantWeather && !wantPlanes && !wantTemp) continue;
+    bool wantIss = issWantedAt && now - issWantedAt < DEMAND_KEEP_MS;
+    if (!wantWeather && !wantPlanes && !wantTemp && !wantIss && !planeAlertOn && !issAlertOn) continue;
     if (!netOnline()) {
       weatherStatus = planesStatus = "Bez internetu – v aplikaci ulož Wi-Fi";
+      issStatus = "Bez internetu";
       continue;
     }
+    if (wantIss || issAlertOn) issTick(wantIss);
     if (wantTemp && (!currentFetchedAt || tempStale || now - currentFetchedAt > CURRENT_PERIOD_MS) &&
         (!currentTriedAt || tempStale || now - currentTriedAt > CURRENT_RETRY_MS)) {
       fetchCurrent();
     }
+    time_t clock = time(nullptr);
+    struct tm lt;
+    localtime_r(&clock, &lt);
+    bool daytime = clock < 1700000000 || (lt.tm_hour >= 7 && lt.tm_hour < 21);  // alerts are shown 7-21 h
     if (wantPlanes && (!planesFetchedAt || now - planesFetchedAt > PLANES_PERIOD_MS)) {
       fetchPlanes();
+    } else if (!wantPlanes && planeAlertOn && daytime && (!overheadFetchedAt || now - overheadFetchedAt > OVERHEAD_PERIOD_MS)) {
+      pollOverhead();
     }
     if (wantWeather && (viewChanged || !weatherFetchedAt || millis() - weatherFetchedAt > WEATHER_PERIOD_MS)) {
       if (!frameCount) weatherStatus = "Stahuji radar ČHMÚ…";
@@ -548,7 +788,8 @@ void radarNetInit() {
   // Local time for the frame labels (Central European with summer time).
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
   tzset();
-  xTaskCreatePinnedToCore(radarTask, "radar", 12288, nullptr, 1, nullptr, 0);
+  sat = new Sgp4();
+  xTaskCreatePinnedToCore(radarTask, "radar", 16384, nullptr, 1, nullptr, 0);
 }
 
 void radarNetDemand(bool weather, bool planes) {
@@ -566,6 +807,7 @@ void radarNetSetView(const GeoView &v) {
   if (moved) {
     viewChanged = true;
     tempStale = true;
+    issStale = true;
     planesFetchedAt = 0;
   }
 }
@@ -640,6 +882,39 @@ void radarPlanesJson(String &out) {
     out += buf;
   }
   out += "]}";
+}
+
+bool radarForecast(Forecast &out) {
+  xSemaphoreTake(lock, portMAX_DELAY);
+  out = forecast;
+  xSemaphoreGive(lock);
+  return out.valid;
+}
+
+void radarNetSetAlerts(bool planesOverhead, bool issPasses) {
+  planeAlertOn = planesOverhead;
+  issAlertOn = issPasses;
+}
+
+uint32_t radarOverhead(OverheadAlert &out) {
+  xSemaphoreTake(lock, portMAX_DELAY);
+  out = overhead;
+  uint32_t seq = overheadSeq;
+  xSemaphoreGive(lock);
+  return seq;
+}
+
+void radarNetDemandIss() {
+  uint32_t now = millis();
+  issWantedAt = now ? now : 1;
+}
+
+bool radarIss(IssInfo &out) {
+  xSemaphoreTake(lock, portMAX_DELAY);
+  out = iss;
+  xSemaphoreGive(lock);
+  if (!out.valid) out.status = issStatus;
+  return out.valid;
 }
 
 const char *radarStatus(bool weather) {

@@ -22,6 +22,7 @@
 #include "hunt.h"
 #include "imu.h"
 #include "maze.h"
+#include "weatherfx.h"
 #include "wisp.h"
 #include "net.h"
 #include "ota.h"
@@ -70,6 +71,8 @@ static RadarMode radarMode = RADAR_OFF;
 static RadarScreens radarScreens;
 static uint32_t lastRadarFrame, radarAlertAt, radarAutoUntil;
 static WispGame wisp;
+static WeatherFx weatherFx;
+static OverheadAlert planeAlertShown;  // active while the "right above you" screen is up
 static bool wispAfterCalibration;  // the light catcher waits for the tilt calibration
 static bool wispTap;
 static HuntData hunt;
@@ -190,6 +193,7 @@ void appApplySettings() {
   }
   imuConfigure(settings.tiltInvert, settings.motionSensitivity);
   radarNetSetView(homeView());
+  radarNetSetAlerts(settings.planeAlert, settings.issAlert);
   enforceSoulsOnly();
   updateLook();
   nextFrameAt = 0;
@@ -336,6 +340,18 @@ static void setRadar(RadarMode m) {
     wisp.stop();
     qrStage = QR_NONE;
     radarNetDemand(m == RADAR_WEATHER, m == RADAR_PLANES);
+    if (m == RADAR_FORECAST) radarNetDemandTemperature();
+    if (m == RADAR_ISS) radarNetDemandIss();
+  }
+  if (m != RADAR_PLANES) planeAlertShown.active = false;
+}
+
+static RadarMode nextRadar(RadarMode m) {
+  switch (m) {
+    case RADAR_WEATHER: return RADAR_PLANES;
+    case RADAR_PLANES: return RADAR_FORECAST;
+    case RADAR_FORECAST: return RADAR_ISS;
+    default: return RADAR_WEATHER;
   }
 }
 
@@ -343,6 +359,8 @@ bool appRadar(const String &show) {
   lastInteraction = millis();
   if (show == "weather") setRadar(RADAR_WEATHER);
   else if (show == "planes") setRadar(RADAR_PLANES);
+  else if (show == "forecast") setRadar(RADAR_FORECAST);
+  else if (show == "iss") setRadar(RADAR_ISS);
   else if (show == "off") setRadar(RADAR_OFF);
   else return false;
   if (show != "off" && settings.autoShow) {
@@ -625,6 +643,46 @@ void appStatusJson(String &body) {
       body += ",\"temp\":" + String(cw.tempC, 1) + ",\"sky\":" + jsonText(weatherCodeName(cw.code)) +
               ",\"wind\":" + String(cw.windKmh, 0);
     }
+    body += ",\"weatherFx\":" + String(settings.weatherFx ? "true" : "false") +
+            ",\"forecastAlert\":" + String(settings.forecastAlert ? "true" : "false") +
+            ",\"planeAlert\":" + String(settings.planeAlert ? "true" : "false") +
+            ",\"issAlert\":" + String(settings.issAlert ? "true" : "false") +
+            ",\"fx\":" + jsonText(weatherFxName(weatherFx.kind())) + ",\"frost\":" + String(weatherFx.frost() ? "true" : "false");
+    Forecast fc;
+    if (radarForecast(fc)) {
+      body += ",\"forecast\":[";
+      for (int i = 0; i < 2; i++) {
+        const DayForecast &d = fc.day[i];
+        body += String(i ? "," : "") + "{\"sky\":" + jsonText(weatherCodeName(d.code)) + ",\"max\":" + String(d.tMax, 0) +
+                ",\"min\":" + String(d.tMin, 0) + ",\"rain\":" + String(d.rainProb) + "}";
+      }
+      body += "]";
+    }
+    if (ri.storm) {
+      char b[64];
+      snprintf(b, sizeof(b), "bouřka %.0f km %s", ri.stormKm, bearingName(ri.stormBearing));
+      body += ",\"storm\":" + jsonText(b);
+    }
+    IssInfo iss;
+    radarNetDemandIss();
+    if (radarIss(iss)) {
+      body += ",\"iss\":" + jsonText(iss.hasPass ? iss.when : "dnes nepřeletí viditelně");
+      if (iss.hasPass) {
+        char b[48];
+        snprintf(b, sizeof(b), "%s → %s, výška %.0f°", bearingName(iss.azStart), bearingName(iss.azEnd), iss.maxEl);
+        body += ",\"issPath\":" + jsonText(b);
+      }
+    } else {
+      body += ",\"iss\":" + jsonText(iss.status);
+    }
+    OverheadAlert oa;
+    radarOverhead(oa);
+    if (oa.active) {
+      char b[120];
+      snprintf(b, sizeof(b), "%s%s%s%s%s", oa.typeName[0] ? oa.typeName : oa.plane.callsign, oa.from[0] ? " · " : "",
+               oa.from, oa.to[0] ? " → " : "", oa.to);
+      body += ",\"lastOverhead\":" + jsonText(b);
+    }
     body += "}";
   }
   body += ",\"lights\":{\"active\":" + String(wisp.active() ? "true" : "false") + ",\"best\":" + String(settings.wispBest) +
@@ -696,7 +754,7 @@ static void handleImuEvents() {
       continue;
     }
     if (radarMode != RADAR_OFF) {
-      if (e == IMU_TAP) setRadar(radarMode == RADAR_WEATHER ? RADAR_PLANES : RADAR_WEATHER);
+      if (e == IMU_TAP) setRadar(nextRadar(radarMode));
       if (e == IMU_DOUBLE_TAP) setRadar(RADAR_OFF);
       continue;
     }
@@ -784,6 +842,30 @@ static void showOtaProgress() {
 
 // ------------------------------------------------------------------ modes
 
+// Weather outside on the glass (rain, snow, storm, fog, frost), refreshed every few seconds.
+static void drawWeatherFx(Canvas &c, float dt) {
+  static uint32_t checkedAt;
+  uint32_t now = millis();
+  if (now - checkedAt > 5000 || !checkedAt) {
+    checkedAt = now ? now : 1;
+    WeatherFxKind kind = FX_NONE;
+    bool frost = false;
+    CurrentWeather cw;
+    if (settings.weatherFx && netOnline()) {
+      radarNetDemandTemperature();
+      if (radarCurrent(cw)) {
+        RainInfo ri;
+        int level = radarRainSoon(ri) && ri.atHome ? ri.level : -1;
+        kind = weatherFxKind(cw.code, level);
+        frost = cw.tempC <= 0.0f;
+      }
+    }
+    weatherFx.set(kind, frost);
+  }
+  weatherFx.update(dt);
+  weatherFx.render(c);
+}
+
 static void drawStatusIcons(Canvas &c) {
   if (battery().present && battery().millivolts < BAT_LOW_MV) {
     c.roundRect(104, 204, 28, 14, 3, {255, 255, 255});
@@ -837,6 +919,7 @@ static void ghostLoop() {
   }
   Canvas canvas(displayBuffer(), SCREEN_W, SCREEN_H);
   ghost.render(canvas, look);
+  drawWeatherFx(canvas, dt);
   drawStatusIcons(canvas);
   displayPushNative();
 }
@@ -882,6 +965,7 @@ static void soulsDirectorLoop() {
   huntFx.update(dt);
   String thanks = thanksText();
   huntFx.render(canvas, hunt, thanks.c_str());
+  drawWeatherFx(canvas, dt);
   drawStatusIcons(canvas);
   displayPushNative();
 }
@@ -893,7 +977,7 @@ static void soulsLoop() {
 // ------------------------------------------------------------------ surprise mode
 
 static int currentShowItem() {
-  if (radarMode != RADAR_OFF) return SCENE_COUNT + soulCount() + (radarMode == RADAR_PLANES);
+  if (radarMode != RADAR_OFF) return SCENE_COUNT + soulCount() + (radarMode >= RADAR_FORECAST ? 2 : radarMode - 1);
   return settings.mode == MODE_SOULS ? SCENE_COUNT + settings.soul : settings.scene;
 }
 
@@ -906,14 +990,14 @@ static uint32_t showDuration(int item) {
 // Weighted random pick: no immediate repeats, souls less often in cute mode,
 // and the ghost gets more time when the pet needs care.
 static int pickShowItem() {
-  int n = SCENE_COUNT + soulCount() + 2;  // + weather radar, aircraft radar
+  int n = SCENE_COUNT + soulCount() + 3;  // + weather radar, aircraft radar, forecast
   float weights[16];
   float total = 0;
   int current = currentShowItem();
   for (int i = 0; i < n && i < 16; i++) {
     float w = i < SCENE_COUNT ? 1.0f : settings.spooky == 0 ? 0.3f : settings.spooky == 1 ? 0.7f : 1.2f;
     if (settings.soulsOnly || hunt.active) w = i < SCENE_COUNT ? 0.0f : 1.0f;  // only the trapped souls
-    if (i >= SCENE_COUNT + (int)soulCount()) w = settings.radarInShow && netOnline() && !hunt.active ? 0.5f : 0.0f;
+    if (i >= SCENE_COUNT + (int)soulCount()) w = settings.radarInShow && netOnline() && !hunt.active ? 0.35f : 0.0f;
     if (i >= SCENE_COUNT && (pet.hungry() || pet.bored() || pet.tired())) w *= 0.3f;
     for (int8_t r : showRecent) {
       if (r == i) w *= 0.1f;
@@ -935,7 +1019,8 @@ static void applyShowItem(int item) {
   showRecent[1] = showRecent[0];
   showRecent[0] = item;
   if (item >= SCENE_COUNT + (int)soulCount()) {
-    radarMode = item == SCENE_COUNT + (int)soulCount() ? RADAR_WEATHER : RADAR_PLANES;
+    radarMode = (RadarMode)(RADAR_WEATHER + (item - SCENE_COUNT - (int)soulCount()));
+    if (radarMode == RADAR_FORECAST) radarNetDemandTemperature();
     lastRadarFrame = 0;
     showUntil = millis() + showDuration(item);
     return;
@@ -1025,14 +1110,69 @@ static bool radarLoop() {
   // Keep the weather fresh in the background for the rain alert.
   if (settings.rainAlert || (settings.radarInShow && settings.autoShow)) radarNetDemand(true, false);
   static uint32_t lastRainCheck;
-  if (settings.rainAlert && radarMode == RADAR_OFF && !maze.active() && !wisp.active() && qrStage == QR_NONE &&
-      now - lastRainCheck > 30000 && (!radarAlertAt || now - radarAlertAt > 30 * 60000UL)) {
+  bool idle = radarMode == RADAR_OFF && !maze.active() && !wisp.active() && qrStage == QR_NONE && settings.displayOn &&
+              !otaBusy();
+  struct tm lt;
+  time_t nowT = time(nullptr);
+  bool clock = nowT > 1700000000;
+  localtime_r(&nowT, &lt);
+  int minuteOfDay = lt.tm_hour * 60 + lt.tm_min;
+  bool daytime = clock && minuteOfDay >= 7 * 60 && minuteOfDay < 21 * 60;
+  if (settings.rainAlert && idle && now - lastRainCheck > 30000 && (!radarAlertAt || now - radarAlertAt > 30 * 60000UL)) {
     lastRainCheck = now;
     RainInfo info;
-    if (radarRainSoon(info) && (info.atHome || (info.level >= 2 && info.distanceKm < 15))) {
+    if (radarRainSoon(info)) {
+      WeatherFrame f[RADAR_FRAMES];
+      int n = radarWeatherFrames(f);
+      if (n >= 4) stormTrend(info, rainInfo(f[n - 4].pixels, homeView()));
+    }
+    if (info.known && (info.atHome || (info.level >= 2 && info.distanceKm < 15) ||
+                       (info.storm && info.stormKm < 25 && info.stormTrend > 0))) {
       radarAlertAt = now;
       setRadar(RADAR_WEATHER);
       radarAutoUntil = now + 30000;  // shows itself for 30 s, then back to the soul
+      idle = false;
+    }
+  }
+  // Forecast once in the morning (today) and once in the evening (tomorrow).
+  static int forecastShownDay = -1, forecastShownPart = -1;
+  if (settings.forecastAlert && netOnline()) radarNetDemandTemperature();
+  if (settings.forecastAlert && idle && clock) {
+    int part = minuteOfDay >= 6 * 60 + 30 && minuteOfDay < 9 * 60 + 30 ? 0 : minuteOfDay >= 18 * 60 + 30 && minuteOfDay < 21 * 60 ? 1 : -1;
+    Forecast fc;
+    if (part >= 0 && (forecastShownDay != lt.tm_yday || forecastShownPart != part) && radarForecast(fc)) {
+      forecastShownDay = lt.tm_yday;
+      forecastShownPart = part;
+      setRadar(RADAR_FORECAST);
+      radarAutoUntil = now + 15000;
+      idle = false;
+    }
+  }
+  // "Right above you!" when an aircraft flies over home.
+  static uint32_t seenOverhead, planeAlertAt;
+  OverheadAlert oa;
+  uint32_t seq = radarOverhead(oa);
+  if (seq != seenOverhead) {
+    seenOverhead = seq;
+    if (settings.planeAlert && idle && daytime && (!planeAlertAt || now - planeAlertAt > 10 * 60000UL)) {
+      planeAlertAt = now;
+      setRadar(RADAR_PLANES);
+      planeAlertShown = oa;
+      radarAutoUntil = now + 20000;
+      idle = false;
+    }
+  }
+  // ISS: from a few minutes before a visible pass until it is over.
+  static time_t issAlertedPass;
+  IssInfo iss;
+  if (settings.issAlert && idle && clock && lt.tm_hour >= 5 && lt.tm_hour < 23 && radarIss(iss) && iss.hasPass &&
+      iss.minutesTo <= 4 && (iss.minutesTo >= 0 || iss.inPass)) {
+    time_t passKey = nowT / 60 + iss.minutesTo;  // the pass start minute
+    if (passKey > issAlertedPass + 5) {
+      issAlertedPass = passKey;
+      setRadar(RADAR_ISS);
+      int minutes = iss.minutesTo + 8 < 2 ? 2 : iss.minutesTo + 8;
+      radarAutoUntil = now + (uint32_t)minutes * 60000UL;  // whole pass
     }
   }
   if (radarAutoUntil && (int32_t)(now - radarAutoUntil) >= 0) {
@@ -1048,6 +1188,12 @@ static bool radarLoop() {
   lastRadarFrame = now;
   lastInteraction = radarAutoUntil ? lastInteraction : now;
   radarNetDemand(radarMode == RADAR_WEATHER, radarMode == RADAR_PLANES);
+  if (radarMode == RADAR_FORECAST) radarNetDemandTemperature();
+  if (radarMode == RADAR_ISS) radarNetDemandIss();
+  if (radarMode == RADAR_ISS && radarAutoUntil) {  // ISS alert ends with the pass
+    IssInfo iss;
+    if (radarIss(iss) && !iss.inPass && iss.minutesTo > 6) radarAutoUntil = now;
+  }
   if (!settings.displayOn) {
     return true;
   }
@@ -1060,12 +1206,26 @@ static bool radarLoop() {
     CurrentWeather cw;
     radarCurrent(cw);
     radarScreens.drawWeather(canvas, view, frames, n, settings.homeName.c_str(), radarStatus(true), cw, t);
-  } else {
+  } else if (radarMode == RADAR_PLANES) {
     static Plane list[RADAR_MAX_PLANES];
     int n = radarPlanes(list, RADAR_MAX_PLANES);
     CurrentWeather cw;
     radarCurrent(cw);
-    radarScreens.drawPlanes(canvas, view, list, n, settings.homeName.c_str(), radarStatus(false), cw, t);
+    radarScreens.drawPlanes(canvas, view, list, n, settings.homeName.c_str(), radarStatus(false), cw, t,
+                            planeAlertShown.active ? &planeAlertShown : nullptr);
+  } else if (radarMode == RADAR_FORECAST) {
+    Forecast fc;
+    radarForecast(fc);
+    CurrentWeather cw;
+    radarCurrent(cw);
+    time_t nowT = time(nullptr);
+    struct tm lt;
+    localtime_r(&nowT, &lt);
+    radarScreens.drawForecast(canvas, fc, cw, settings.homeName.c_str(), lt.tm_hour >= 14, t);
+  } else {
+    IssInfo iss;
+    radarIss(iss);
+    radarScreens.drawIss(canvas, iss, t);
   }
   displayPushNative();
   return true;
@@ -1341,6 +1501,7 @@ void setup() {
   netInit();
   radarNetInit();
   radarNetSetView(homeView());
+  radarNetSetAlerts(settings.planeAlert, settings.issAlert);
   if (rescue || settings.wifiPolicy != WIFI_RESCUE_ONLY) {
     netStart(rescue);
   }

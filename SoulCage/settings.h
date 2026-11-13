@@ -53,7 +53,11 @@ struct Settings {
   float homeLat = 50.6170f, homeLon = 15.1410f;
   uint8_t radarRange = 50;     // km from the centre to the rim: 25, 50 or 100
   bool radarInShow = true;     // part of the surprise rotation (needs internet)
-  bool rainAlert = true;       // show the weather radar when rain comes close  // QR codes for Wi-Fi and the app after switching on  // surprise mode: rotates scenes and souls
+  bool rainAlert = true;       // show the weather radar when rain or a storm comes close
+  bool weatherFx = true;       // rain / snow / storm / frost on the glass over the soul
+  bool forecastAlert = true;   // forecast in the morning and the evening
+  bool planeAlert = true;      // "right above you!" when an aircraft flies over home
+  bool issAlert = true;        // ISS screen when it can be seen in the sky
   String password = DEFAULT_PASSWORD;
   String manifestUrl = DEFAULT_MANIFEST_URL;
   Network networks[MAX_NETWORKS];

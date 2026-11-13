@@ -246,6 +246,10 @@ static void handleSettings() {
   settings.radarRange = range <= 35 ? 25 : range <= 75 ? 50 : 100;
   settings.radarInShow = argLong("radarInShow", settings.radarInShow, 0, 1);
   settings.rainAlert = argLong("rainAlert", settings.rainAlert, 0, 1);
+  settings.weatherFx = argLong("weatherFx", settings.weatherFx, 0, 1);
+  settings.forecastAlert = argLong("forecastAlert", settings.forecastAlert, 0, 1);
+  settings.planeAlert = argLong("planeAlert", settings.planeAlert, 0, 1);
+  settings.issAlert = argLong("issAlert", settings.issAlert, 0, 1);
   if (server.hasArg("manifestUrl")) {
     String url = server.arg("manifestUrl");
     settings.manifestUrl = url.startsWith("https://") ? url : DEFAULT_MANIFEST_URL;

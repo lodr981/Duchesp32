@@ -52,6 +52,10 @@ void settingsLoad() {
   settings.radarRange = p.getUChar("rrange", settings.radarRange);
   settings.radarInShow = p.getBool("rshow", settings.radarInShow);
   settings.rainAlert = p.getBool("ralert", settings.rainAlert);
+  settings.weatherFx = p.getBool("wfx", settings.weatherFx);
+  settings.forecastAlert = p.getBool("falert", settings.forecastAlert);
+  settings.planeAlert = p.getBool("palert", settings.planeAlert);
+  settings.issAlert = p.getBool("ialert", settings.issAlert);
   settings.password = p.getString("pass", settings.password);
   settings.manifestUrl = p.getString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {
@@ -105,6 +109,10 @@ void settingsSave() {
   p.putUChar("rrange", settings.radarRange);
   p.putBool("rshow", settings.radarInShow);
   p.putBool("ralert", settings.rainAlert);
+  p.putBool("wfx", settings.weatherFx);
+  p.putBool("falert", settings.forecastAlert);
+  p.putBool("palert", settings.planeAlert);
+  p.putBool("ialert", settings.issAlert);
   p.putString("pass", settings.password);
   p.putString("manifest", settings.manifestUrl);
   for (int i = 0; i < MAX_NETWORKS; i++) {

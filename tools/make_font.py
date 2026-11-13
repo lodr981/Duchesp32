@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONT_DIR = sys.argv[1] if len(sys.argv) > 1 else "/usr/share/fonts/opentype/inter"
-CHARS = sorted(set(chr(c) for c in range(32, 127)) | set("áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ°…–’"))
+CHARS = sorted(set(chr(c) for c in range(32, 127)) | set("áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ°…–’→·äöüÄÖÜßñçèêëàâîïôøåæłśćńżźąęőűãõ"))
 FONTS = [  # (C name, file, size)
     ("TINY", "Inter-Medium.otf", 12),
     ("SMALL", "Inter-SemiBold.otf", 17),
